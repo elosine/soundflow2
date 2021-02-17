@@ -5,94 +5,40 @@ var delta = 0.0;
 var lastFrameTimeMs = 0.0;
 var startTime;
 var clockTimeMS, clockTimeSec, clockTimeMin, clockTimeHrs;
+// 3JS SCENE --------------------- >
+var CAM_Z = 45;
+var CAM_Y = -150;
+var CAM_ROTATION_X = rads(0);
+var RUNWAY_ROTATION_X = -25
+var TRACK_DIAMETER = 6;
+var TRACK_Y_OFFSET = 3;
+var SCENE_W = 200;
+var SCENE_H = 300;
+var RUNWAYLENGTH = 380;
+var RUNWAYHALF = RUNWAYLENGTH / 2;
+var RUNWAYSTART = RUNWAYLENGTH / 2;
+var RUNWAYLENGTH_FRAMES = RUNWAYLENGTH / RUNWAY_PXPERFRAME;
+var t_numFrets = 11;
 // TIMING ------------------------- >
 var FRAMERATE = 60.0;
 var MSPERFRAME = 1000.0 / FRAMERATE;
+var SECPERFRAME = 1.0 / FRAMERATE;
+var RUNWAY_PXPERSEC = 40.0;
+var RUNWAY_PXPERMS = RUNWAY_PXPERSEC / 1000.0;
+var RUNWAY_PXPERFRAME = RUNWAY_PXPERSEC / FRAMERATE;
+var RUNWAY_GOFRETPOS_Y = -RUNWAYLENGTH / 2;
+var RUNWAY_GOFRETHEIGHT = 4;
+var maxPieceDur = 3600;
 var timeAdjustment = 0;
 // SVG ---------------------------- >
 var SVG_NS = "http://www.w3.org/2000/svg";
 var SVG_XLINK = 'http://www.w3.org/1999/xlink';
-// NOTATION SVGs ------------------ >
-var numDials = 4;
-var dials = [];
-//// DIAL Notation Data ////////////////////////////////////
-//[url, w, h]
-var notationUrlsDimensions = [];
-var motiveWeightingSets = [
-  [0.13, 0.13, 0.13, 0.13, 0.42],
-  [0.15, 0.3, 0.18, 0.28, 0.31],
-  [0.23, 0.07, 0.2, 0.11, 0.22],
-  [0.2, 0.22, 0.2, 0.11, 0.11]
-];
-var numTicksPerDial = [12, 11, 13, 9];
-var useNotationProbabilities = [0.36, 0.42, 0.33, 0.41];
-var bpms = [87, 87.045, 87.091, 87.1346];
-for (var i = 0; i < numDials; i++) notationUrlsDimensions.push([]);
-// 4 dials
-var motivePaths = [
-  [
-    "/notation/eight_accent_2ndPartial_27_34.svg",
-    "/notation/eight_accent_1stPartial_27_34.svg",
-    "/notation/triplet_accent_1st_partial_45_45.svg",
-    "/notation/quarter_accent_12_35.svg",
-    "/notation/quadruplet_accent.svg"
-  ],
-  [
-    "/notation/eight_accent_2ndPartial_27_34.svg",
-    "/notation/eight_accent_1stPartial_27_34.svg",
-    "/notation/triplet_accent_1st_partial_45_45.svg",
-    "/notation/quarter_accent_12_35.svg",
-    "/notation/quadruplet_accent.svg"
-  ],
-  [
-    "/notation/eight_accent_2ndPartial_27_34.svg",
-    "/notation/eight_accent_1stPartial_27_34.svg",
-    "/notation/triplet_accent_1st_partial_45_45.svg",
-    "/notation/quarter_accent_12_35.svg",
-    "/notation/quadruplet_accent.svg"
-  ],
-  [
-    "/notation/eight_accent_2ndPartial_27_34.svg",
-    "/notation/eight_accent_1stPartial_27_34.svg",
-    "/notation/triplet_accent_1st_partial_45_45.svg",
-    "/notation/quarter_accent_12_35.svg",
-    "/notation/quadruplet_accent.svg"
-  ]
-];
-
-// one dial
-// var motivePaths = [
-//   [
-//     "/notation/quintuplet_accent.svg",
-//     "/notation/eight_accent_2ndPartial_27_34.svg",
-//     "/notation/eight_accent_1stPartial_27_34.svg",
-//     "/notation/triplet_accent_1st_partial_45_45.svg",
-//     "/notation/quarter_accent_12_35.svg",
-//     "/notation/quadruplet_accent.svg"
-//   ]
-// ];
-// two dials
-// var motivePaths = [
-//   [
-//     "/notation/quintuplet_accent.svg",
-//     "/notation/eight_accent_2ndPartial_27_34.svg",
-//     "/notation/eight_accent_1stPartial_27_34.svg",
-//     "/notation/triplet_accent_1st_partial_45_45.svg",
-//     "/notation/quarter_accent_12_35.svg"
-//   ],
-//   [
-//     "/notation/quadruplet_accent.svg",
-//     "/notation/eight_accent_2ndPartial_27_34.svg",
-//     "/notation/eight_accent_1stPartial_27_34.svg",
-//     "/notation/triplet_accent_1st_partial_45_45.svg",
-//     "/notation/quarter_accent_12_35.svg"
-//   ]
-// ];
-
 // CONTROL PANEL ------------------ >
 var controlPanel;
+var ctrlPanelH = 70;
+var ctrlPanelW = 360;
 // BUTTONS ------------------------ >
-var activateButtons = false;
+var activateButtons = true; //use this if you need to do some time consuming processing before anything else
 var activateStartBtn = false;
 var activatePauseStopBtn = false;
 var activateSaveBtn = false;
@@ -101,24 +47,27 @@ var startPieceGate = true;
 var pauseState = 0;
 var pausedTime = 0;
 var animationGo = true;
-// SIZE --------------------------- >
-var dialW = 360;
-var dialH = 360;
-// </editor-fold> END GLOBAL VARIABLES ////////////////////////////////////////
+// COLORS ------------------------ >
+var clr_seaGreen = new THREE.Color("rgb(0, 255, 108)");
+var clr_neonMagenta = new THREE.Color("rgb(255, 21, 160)");
+var clr_neonBlue = new THREE.Color("rgb(6, 107, 225)");
+var clr_forest = new THREE.Color("rgb(11, 102, 35)");
+var clr_jade = new THREE.Color("rgb(0, 168, 107)");
+var clr_neonGreen = new THREE.Color("rgb(57, 255, 20)");
+var clr_limegreen = new THREE.Color("rgb(153, 255, 0)");
+var clr_yellow = new THREE.Color("rgb(255, 255, 0)");
+var clr_orange = new THREE.Color("rgb(255, 128, 0)");
+var clr_red = new THREE.Color("rgb(255, 0, 0)");
+var clr_purple = new THREE.Color("rgb(255, 0, 255)");
+var clr_neonRed = new THREE.Color("rgb(255, 37, 2)");
+var clr_safetyOrange = new THREE.Color("rgb(255, 103, 0)");
+var clr_green = new THREE.Color("rgb(0, 255, 0)");
+// EVENTS --------------------- >
+var runwayEventsMatrix;
+var runwayNO;
 
-
-// <editor-fold> <<<< START UP SEQUENCE >>>> ------------------------------- //
-//mkCtrlPanel()
-//getImgDimensions() => makeDials()
-// INIT --------------------------------------------------- //
-function init() { //run from html onload='init();'
-  // 01: MAKE CONTROL PANEL ---------------- >
-  controlPanel = mkCtrlPanel("ctrlPanel", dialW, ctrlPanelH, "Control Panel");
-  // 02: GET NOTATION SIZES ---------------- >
-  //need a motivePaths entry for every dial
-  getImgDimensions(motivePaths, notationUrlsDimensions);
-}
-// TIMESYNC ENGINE ---------------------------------------- //
+// RUN BEFORE INIT ------------------------ >
+//// TIMESYNC ENGINE ------------ //
 var tsServer;
 if (window.location.hostname == 'localhost') {
   tsServer = '/timesync';
@@ -130,12 +79,23 @@ var ts = timesync.create({
   server: '/timesync',
   interval: 1000
 });
-// 03: GENERATE STATIC ELEMENTS ---------------- >
-function makeDials() {
-  for (var i = 0; i < numDials; i++) {
-    dials.push(mkDialNO(i, dialW, dialH, numTicksPerDial[i], bpms[i], notationUrlsDimensions[i], useNotationProbabilities[i], motiveWeightingSets[i]));
-  }
+// </editor-fold> END GLOBAL VARIABLES ////////////////////////////////////////
+
+
+// <editor-fold> <<<< START UP SEQUENCE >>>> ------------------------------- //
+//Start-Up Sequence Documentation
+////Generate Piece creates events from this client and sends through Socket
+////When received generates the eventMatrix with 3js objects
+
+// INIT --------------------------------------------------- //
+function init() { //run from html onload='init();'
+  // 01: MAKE CONTROL PANEL ---------------- >
+  controlPanel = mkCtrlPanel("ctrlPanel", ctrlPanelW, ctrlPanelH, "Control Panel");
 }
+
+// 03: GENERATE STATIC ELEMENTS ---------------- >
+runwayNO = mkNotationObject_runway(0, SCENE_W, SCENE_H, RUNWAYLENGTH);
+
 // FUNCTION: startClockSync ------------------------------- //
 function startClockSync() {
   var t_now = new Date(ts.now());
@@ -147,336 +107,248 @@ function startPiece() {
   startClockSync();
   requestAnimationFrame(animationEngine); //change to gate
 }
-
 // </editor-fold> END START UP SEQUENCE ///////////////////////////////////////
 
 
-// <editor-fold> <<<< DIAL NOTATION OBJECT >>>> ---------------------------- //
+// <editor-fold> <<<< NOTATION OBJECT >>>> ---------------------------- //
 
-// <editor-fold>        <<<< DIAL NOTATION OBJECT - INIT >>>> -- //
-function mkDialNO(ix, w, h, numTicks, ibpm, motiveUrlSzSet, useNotationProbability, motiveWeightingSet) {
-  var notationObj = {}; //returned object to add all elements and data
-  var cx = w / 2;
-  var cy = h / 2;
-  var innerRadius = 70;
-  var tickLength = 11;
-  var tickWidth = 1;
-  var noteSpace = 70;
-  var midRadius = innerRadius + noteSpace;
-  var bbRadius = 10;
-  var bbLandLineY = cy + innerRadius - 20;
-  var bbImpactY = bbLandLineY - bbRadius;
-  var bbDescentLengthFrames = 13;
-  var bbDescentLengthPx = (bbDescentLengthFrames * (bbDescentLengthFrames + 1)) / 2;
-  var bbStartY = bbImpactY - bbDescentLengthPx; // 78 accomodates acceleration 1+2+3+4...12
-  var bbLandLineR = 10;
-  var bbLandLineX1 = cx - bbLandLineR;
-  var bbLandLineX2 = cx + bbLandLineR;
-  var bbOffFrame = 0;
-  var bbDurFrames = 18;
-  var bbVelocity = 1;
-  var bbAccel = 1;
-  // var bbDescentLength = bbImpactY - bbStartY; //80 velocity has to into this whole
-  var bbLeadTime;
-  var bbDir = 1;
-  var defaultStrokeWidth = 4;
-  var outerRadius = w / 2;
-  var tickBlinkTimes = []; //timer to blink ticks
-  var notes = [];
-  var noteBoxes = [];
-  var tickDegs = [];
-  for (var i = 0; i < numTicks; i++) tickBlinkTimes.push(0); //populate w/0s
-  // Calculate number of degrees per frame
-  var beatsPerSec = ibpm / 60;
-  var beatsPerFrame = beatsPerSec / FRAMERATE;
-  var degreesPerBeat = 360 / numTicks;
-  var degreesPerFrame = degreesPerBeat * beatsPerFrame;
-  var framesPerBeat = 1.0 / beatsPerFrame;
-  var initDeg = 270 - (5 * degreesPerBeat);
-  var currDeg = initDeg;
-  var lastDeg = currDeg;
-  // 100 beats trial
-  var bbBeatFrames = [];
-  for (var i = 0; i < 3000; i++) {
-    bbBeatFrames.push(Math.round(i * framesPerBeat) - bbDescentLengthFrames);
-  }
-  notationObj['newTempoFunc'] =
-    function newTempo(newBPM) {
-      var newBeatsPerSec = newBPM / 60;
-      var newBeatsPerFrame = newBeatsPerSec / FRAMERATE;
-      degreesPerFrame = degreesPerBeat * newBeatsPerFrame;
-    }
+// <editor-fold>        <<<< NOTATION OBJECT - INIT >>>> -- //
+function mkNotationObject_runway(ix, w, h, len) {
+  var notationObj = {};
   // Generate ID
-  var id = 'dial' + ix;
+  var id = 'runway' + ix;
   notationObj['id'] = id;
-  // Make SVG Canvas ------------- >
+  // Make Canvas(es) ------------- >
   var canvasID = id + 'canvas';
-  var svgCanvas = mkSVGcanvas(canvasID, w, h); //see func below
-  notationObj['canvas'] = svgCanvas;
+  var canvas = mkCanvasDiv(canvasID, w, h, '#000000');
+  notationObj['canvas'] = canvas;
   // Make jsPanel ----------------- >
   var panelID = id + 'panel';
-  var panel = mkPanel(panelID, svgCanvas, w, h, "Player " + ix.toString()); //see func below
+  var panel = mkPanel(panelID, canvas, w, h, "Player " + ix.toString());
   notationObj['panel'] = panel;
-  // </editor-fold>       END DIAL NOTATION OBJECT - INIT /////////
+  // </editor-fold>       END NOTATION OBJECT - INIT /////////
 
-  // <editor-fold>      <<<< DIAL NOTATION OBJECT - STATIC ELEMENTS //
-  //// Ring -------------------------------- //
-  var ring = document.createElementNS(SVG_NS, "circle");
-  ring.setAttributeNS(null, "cx", cx);
-  ring.setAttributeNS(null, "cy", cy);
-  ring.setAttributeNS(null, "r", innerRadius);
-  ring.setAttributeNS(null, "stroke", "rgb(153, 255, 0)");
-  ring.setAttributeNS(null, "stroke-width", defaultStrokeWidth);
-  ring.setAttributeNS(null, "fill", "none");
-  var ringID = id + 'ring';
-  ring.setAttributeNS(null, "id", ringID);
-  svgCanvas.appendChild(ring);
-  notationObj['ring'] = ring;
-  //// Dial ------------------------------- //
-  var dialWidth = 1;
-  var dial = document.createElementNS(SVG_NS, "line");
-  var ogx1 = outerRadius * Math.cos(rads(initDeg)) + cx;
-  var ogy1 = outerRadius * Math.sin(rads(initDeg)) + cy;
-  dial.setAttributeNS(null, "x1", ogx1);
-  dial.setAttributeNS(null, "y1", ogy1);
-  dial.setAttributeNS(null, "x2", cx);
-  dial.setAttributeNS(null, "y2", cy);
-  dial.setAttributeNS(null, "stroke", "rgb(153,255,0)");
-  dial.setAttributeNS(null, "stroke-width", dialWidth);
-  var dialID = id + 'dial';
-  dial.setAttributeNS(null, "id", dialID);
-  svgCanvas.appendChild(dial);
-  notationObj['dial'] = dial;
-  //// Ticks ------------------------------- //
-  var ticks = [];
-  var tickRadius = innerRadius - (defaultStrokeWidth / 2) - 3; // ticks offset from dial 3px like a watch
-  for (var i = 0; i < numTicks; i++) {
-    var tickDeg = -90 + (degreesPerBeat * i); //-90 is 12 o'clock
-    tickDegs.push(tickDeg); //store degrees for collision detection later
-    var x1 = midRadius * Math.cos(rads(tickDeg)) + cx;
-    var y1 = midRadius * Math.sin(rads(tickDeg)) + cy;
-    var x2 = (tickRadius - tickLength) * Math.cos(rads(tickDeg)) + cx;
-    var y2 = (tickRadius - tickLength) * Math.sin(rads(tickDeg)) + cy;
-    var tick = document.createElementNS(SVG_NS, "line");
-    tick.setAttributeNS(null, "x1", x1);
-    tick.setAttributeNS(null, "y1", y1);
-    tick.setAttributeNS(null, "x2", x2);
-    tick.setAttributeNS(null, "y2", y2);
-    tick.setAttributeNS(null, "stroke", "rgb(255,128,0)");
-    tick.setAttributeNS(null, "stroke-width", tickWidth);
-    var tickID = id + 'tick' + i;
-    tick.setAttributeNS(null, "id", tickID);
-    svgCanvas.appendChild(tick);
-    ticks.push(tick);
-  }
-  notationObj['ticks'] = ticks;
-  //// Bouncing Ball ------------------------------- //
-  //bb landing line
-  var bbLandLineWidth = 2;
-  var bbLandLine = document.createElementNS(SVG_NS, "line");
-  bbLandLine.setAttributeNS(null, "x1", bbLandLineX1);
-  bbLandLine.setAttributeNS(null, "y1", bbLandLineY);
-  bbLandLine.setAttributeNS(null, "x2", bbLandLineX2);
-  bbLandLine.setAttributeNS(null, "y2", bbLandLineY);
-  bbLandLine.setAttributeNS(null, "stroke", "rgb(153,255,0)");
-  bbLandLine.setAttributeNS(null, "stroke-width", bbLandLineWidth);
-  var bbLandLineID = id + 'bbLandLine';
-  bbLandLine.setAttributeNS(null, "id", bbLandLineID);
-  svgCanvas.appendChild(bbLandLine);
-  notationObj['bbLandLine'] = bbLandLine;
-  //Create array of 4 balls
-  //Only visible x amount of time before
-  //bb landing line
-  var bb = document.createElementNS(SVG_NS, "circle");
-  bb.setAttributeNS(null, "cx", cx);
-  bb.setAttributeNS(null, "cy", bbStartY);
-  bb.setAttributeNS(null, "r", bbRadius); //set bb radius
-  bb.setAttributeNS(null, "stroke", "none");
-  bb.setAttributeNS(null, "fill", "rgb(153, 255, 0)");
-  var bbID = id + 'bb';
-  bb.setAttributeNS(null, "id", bbID);
-  bb.setAttributeNS(null, 'visibility', 'hidden');
-  svgCanvas.appendChild(bb);
-  notationObj['bouncingBall'] = bb;
-  // </editor-fold>     END DIAL NOTATION OBJECT - STATIC ELEMENTS //
+  // <editor-fold>        <<<< NOTATION OBJECT - 3JS >>>> -- //
+  // CAMERA ----------------- >
+  var camera = new THREE.PerspectiveCamera(75, w / h, 1, 3000);
+  camera.position.set(0, CAM_Y, CAM_Z);
+  camera.rotation.x = rads(CAM_ROTATION_X);
+  notationObj['camera'] = camera;
+  // SCENE ----------------- >
+  var scene = new THREE.Scene();
+  notationObj['scene'] = scene;
+  // LIGHTS ----------------- >
+  var lights = [];
+  var sun = new THREE.DirectionalLight(0xFFFFFF, 1.2);
+  sun.position.set(100, 600, 700);
+  scene.add(sun);
+  lights.push(sun);
+  var sun2 = new THREE.DirectionalLight(0x40A040, 0.6);
+  sun2.position.set(-100, 350, 775);
+  scene.add(sun2);
+  lights.push(sun2);
+  notationObj['lights'] = lights;
+  // RENDERER ----------------- >
+  var renderer = new THREE.WebGLRenderer();
+  renderer.setSize(w, h);
+  canvas.appendChild(renderer.domElement);
+  notationObj['renderer'] = renderer;
+  // </editor-fold>       END NOTATION OBJECT - INIT /////////
 
-  // <editor-fold>      <<<< DIAL NOTATION OBJECT - GENERATE PIECE //
-  var rectSize = 36;
-  notationObj['generateNotesArr'] = function() {
-    // FUNCTION GENERATE PIECE ALGORITHIM ----------------------------------- //
-    var notesArr = [];
-    for (var i = 0; i < tickDegs.length; i++) {
-      var useNotation = probability(useNotationProbability); //set porbability of any given tick having a notation
-      // if this tick has notation, algorithm for choosing the motive for this tick
-      if (useNotation) {
-        //Universalize this based on array of motives
-        var motivesIxSet = [];
-        // Generate numbers 0-size of set for chooseWeighted algo below
-        motiveUrlSzSet.forEach(function(it, ix) {
-          motivesIxSet.push(ix);
-        });
-        var chosenMotiveIx = chooseWeighted(motivesIxSet, motiveWeightingSet);
-        var chosenMotive = motiveUrlSzSet[chosenMotiveIx];
-        notesArr.push(chosenMotive);
-      } else { //not all ticks have a notation box. push 0 to empty ones
-        notesArr.push(-1);
-      }
-    }
-    notationObj['notesArr'] = notesArr;
-    return notesArr;
-  }
-  // </editor-fold>     END DIAL NOTATION OBJECT - GENERATE PIECE
-
-  // <editor-fold>      <<<< DIAL NOTATION OBJECT - GENERATE NOTATION >>>> //
-  notationObj['generateNotation'] = function(notesArr) {
-    //Remove Previous Notation
-    notes.forEach(function(it, ix) {
-      if (it != 0) {
-        it.parentNode.removeChild(it);
-      }
+  // <editor-fold>      <<<< NOTATION OBJECT - STATIC ELEMENTS //
+  // RUNWAY ----------------- >
+  var conveyor = new THREE.Group();
+  var t_runwayW = w * 0.67;
+  var runwayMatl =
+    new THREE.MeshLambertMaterial({
+      color: 0x0040C0
     });
-    noteBoxes.forEach(function(it, ix) {
-      if (it != 0) {
-        it.parentNode.removeChild(it);
-      }
-    });
-    notes = [];
-    noteBoxes = [];
-    // Generate New Notation and Boxes
-    for (var i = 0; i < notesArr.length; i++) {
-      if (notesArr[i] != -1) {
-        var url = notesArr[i][0];
-        var svgW = notesArr[i][1];
-        var svgH = notesArr[i][2];
-        var deg = notesArr[i][3];
-        var notationSVG = document.createElementNS(SVG_NS, "image");
-        notationSVG.setAttributeNS(SVG_XLINK, 'xlink:href', url);
-        var rectx = midRadius * Math.cos(rads(tickDegs[i])) + cx - (svgW / 2);
-        var recty = midRadius * Math.sin(rads(tickDegs[i])) + cy - (svgH / 2);
-        notationSVG.setAttributeNS(null, "transform", "translate( " + rectx.toString() + "," + recty.toString() + ")");
-        var notationSVGID = id + 'notationSVG' + i;
-        notationSVG.setAttributeNS(null, "id", notationSVGID);
-        notationSVG.setAttributeNS(null, 'visibility', 'visible');
-        notes.push(notationSVG);
-        var noteBox = document.createElementNS(SVG_NS, "rect");
-        noteBox.setAttributeNS(null, "width", svgW + 6);
-        noteBox.setAttributeNS(null, "height", svgH + 6);
-        var boxX = rectx - 3;
-        var boxY = recty - 3;
-        noteBox.setAttributeNS(null, "transform", "translate( " + boxX.toString() + "," + boxY.toString() + ")");
-        var noteBoxID = id + 'noteBox' + i;
-        noteBox.setAttributeNS(null, "id", canvasID);
-        noteBox.setAttributeNS(null, 'visibility', 'visible');
-        noteBox.setAttributeNS(null, "fill", "white");
-        noteBoxes.push(noteBox);
-        svgCanvas.appendChild(noteBox);
-        svgCanvas.appendChild(notationSVG);
-      } else { //not all ticks have a notation box. push 0 to empty ones
-        notes.push(0);
-        noteBoxes.push(0);
-      }
-    }
+  var runwayGeom = new THREE.PlaneGeometry(
+    t_runwayW,
+    len,
+  );
+  var runway = new THREE.Mesh(runwayGeom, runwayMatl);
+  runway.position.z = -len / 2;
+  conveyor.add(runway);
+  notationObj['runway'] = runway;
+  // TRACK ----------------- >
+  var trgeom = new THREE.CylinderGeometry(TRACK_DIAMETER, TRACK_DIAMETER, len, 32);
+  var trmatl = new THREE.MeshLambertMaterial({
+    color: 0x708090
+  });
+  var tTr = new THREE.Mesh(trgeom, trmatl);
+  tTr.position.z = -(len / 2);
+  tTr.position.y = (-TRACK_DIAMETER / 2) + TRACK_Y_OFFSET;
+  tTr.position.x = 0;
+  conveyor.add(tTr);
+  notationObj['track'] = tTr;
+  // FRETS ----------------- >
+  var fretGeom = new THREE.CylinderGeometry(2, 2, t_runwayW, 32);
+  var fretMatl = new THREE.MeshLambertMaterial({
+    color: clr_seaGreen
+  });
+  var t_fretGap = RUNWAYLENGTH / t_numFrets;
+  for (var i = 0; i < t_numFrets; i++) {
+    var t_fret = new THREE.Mesh(fretGeom, fretMatl);
+    t_fret.rotation.z = rads(-90);
+    t_fret.position.z = -(len / 2);
+    t_fret.position.y = RUNWAYSTART - (t_fretGap * (i + 1));
+    conveyor.add(t_fret);
   }
-  // </editor-fold>     END DIAL NOTATION OBJECT - GENERATE NOTATION
+  //GO FRET
+  var goFretGeom = new THREE.CylinderGeometry(4, 4, t_runwayW, 32);
+  var goFretMatl = new THREE.MeshLambertMaterial({
+    color: clr_neonMagenta
+  });
+  var goFret = new THREE.Mesh(goFretGeom, goFretMatl);
+  goFret.rotation.z = rads(-90);
+  goFret.position.z = -(len / 2);
+  goFret.position.y = -RUNWAYLENGTH / 2;
+  conveyor.add(goFret);
+  // </editor-fold>     END NOTATION OBJECT - STATIC ELEMENTS //
 
-  // <editor-fold>      <<<< DIAL NOTATION OBJECT - ANIMATION >>>> //
-  var tickBlinkDur = 30;
-  var growTickLen = 12; //expand tick stroke-width by this amount
-  // ---------------------------------------------------------- >
-  var animateFunc = function(time) {
-    // Animate Dial
-    currDeg += degreesPerFrame; //advance degreesPerFrame
-    var newDialX1 = outerRadius * Math.cos(rads(currDeg)) + cx;
-    var newDialY1 = outerRadius * Math.sin(rads(currDeg)) + cy;
-    dial.setAttributeNS(null, "x1", newDialX1);
-    dial.setAttributeNS(null, "y1", newDialY1);
-    // Animate Ticks
-    var currDegMod = ((currDeg + 90) % 360) - 90; //do this hack so you are not mod negative number
-    tickDegs.forEach(function(it, ix) {
-      if (ix == 0) { //for tick at 12o'clock to accomodate for positive to negative transition
-        if (lastDeg > 0 && currDegMod < 0) { //if last frame was pos and this frame neg
-          ticks[ix].setAttributeNS(null, "stroke", "rgb(255,0,0)");
-          ticks[ix].setAttributeNS(null, "stroke-width", tickWidth + growTickLen);
-          tickBlinkTimes[ix] = (time + tickBlinkDur); //set blink timer time for this tick
-          // Note Boxes
-          if (noteBoxes[ix] != 0) {
-            noteBoxes[ix].setAttributeNS(null, "stroke", "rgb(255,0,0)");
-            noteBoxes[ix].setAttributeNS(null, "stroke-width", 4);
-          }
-        }
-      } else {
-        if (currDeg < 270) { // different color for count in
-          if (it > lastDeg && it <= currDegMod) { //all other ticks looking to see that last frame dial was before this tick and in this frame dial is equal or past this tick
-            ticks[ix].setAttributeNS(null, "stroke", "rgb(153,255,0)");
-            ticks[ix].setAttributeNS(null, "stroke-width", tickWidth + growTickLen);
-            tickBlinkTimes[ix] = (time + tickBlinkDur); //set blink timer time for this tick
-          }
-        } else {
-          if (it > lastDeg && it <= currDegMod) { //all other ticks looking to see that last frame dial was before this tick and in this frame dial is equal or past this tick
-            ticks[ix].setAttributeNS(null, "stroke", "rgb(255,0,0)");
-            ticks[ix].setAttributeNS(null, "stroke-width", tickWidth + growTickLen);
-            tickBlinkTimes[ix] = (time + tickBlinkDur); //set blink timer time for this tick
-            // Note Boxes
-            if (noteBoxes[ix] != 0) {
-              noteBoxes[ix].setAttributeNS(null, "stroke", "rgb(255,0,0)");
-              noteBoxes[ix].setAttributeNS(null, "stroke-width", 4);
-            }
-          }
-        }
-      }
-    });
-    // Start Bouncing Ball Timer
-    for (var k = 0; k < bbBeatFrames.length; k++) {
-      if (framect == bbBeatFrames[k]) {
-        bbVelocity = 1;
-        bbAccel = 1;
-        bb.setAttributeNS(null, 'cy', bbStartY)
-        bbOffFrame = framect + bbDurFrames;
-        bbDir = 1;
-        break;
-      }
-    }
-    lastDeg = currDegMod;
-    // Tick blink timer
-    tickBlinkTimes.forEach(function(it, ix) {
-      if (time > it) {
-        ticks[ix].setAttributeNS(null, "stroke", "rgb(255,128,0)");
-        ticks[ix].setAttributeNS(null, "stroke-width", tickWidth);
-        // Note Boxes
-        if (noteBoxes[ix] != 0) {
-          noteBoxes[ix].setAttributeNS(null, "stroke", "white");
-          noteBoxes[ix].setAttributeNS(null, "stroke-width", 0);
-        }
-      }
-    })
-    // Bouncing Ball Animation
-    if (framect < bbOffFrame) {
-      bb.setAttributeNS(null, 'visibility', 'visible');
-      var bbCurrentY = parseInt(bb.getAttributeNS(null, 'cy'));
-      bbVelocity = bbVelocity + bbAccel;
-      var bbNewY = bbCurrentY + (bbVelocity * bbDir);
-      if (bbNewY > bbImpactY) {
-        bbDir = -1;
-        bbVelocity = 10;
-        bbAccel = -1;
-      }
-      bb.setAttributeNS(null, 'cy', bbNewY)
-    } else {
-      bb.setAttributeNS(null, 'visibility', 'hidden');
-    }
-  }
-  notationObj['animateFunc'] = animateFunc;
+  // <editor-fold>      <<<< NOTATION OBJECT - 3JS RENDER ACTIONS //
+  // ROTATE GROUP ----------------- >
+  conveyor.rotation.x = rads(RUNWAY_ROTATION_X);
+  scene.add(conveyor);
+  notationObj['conveyor'] = conveyor;
+  // RENDER ----------------- >
+  renderer.render(scene, camera);
+  // </editor-fold>     END NOTATION OBJECT - 3JS RENDER ACTIONS //
   return notationObj;
 }
-// </editor-fold>     END DIAL NOTATION OBJECT - ANIMATION ///////
+// </editor-fold> END NOTATION OBJECT ////////////////////////////////////
 
-// </editor-fold> END DIAL NOTATION OBJECT ////////////////////////////////////
+
+// <editor-fold> <<<< EVENTS >>>> ---------------------------- //
+
+// <editor-fold>      <<<< EVENTS - GENERATE EVENTS //
+//These are events that have equal length and
+//gaps between events that increase a percentage each event
+//for a certain number of events then reverts to the initial gap
+function generateCresEvents(cresDur, igap, deltaAsPercent, numOfCycles) {
+  var eventsArray = [];
+  var newGap = igap;
+  var maxNumEvents = maxPieceDur / cresDur;
+  var currCycle = 0;
+  var goTime = 0;
+  eventsArray.push([goTime, cresDur]);
+  for (var i = 0; i < maxNumEvents; i++) {
+    var tempArr = [];
+    goTime = goTime + cresDur + newGap;
+    tempArr.push(goTime);
+    tempArr.push(cresDur);
+    eventsArray.push(tempArr);
+    if ((currCycle % numOfCycles) == 0) {
+      newGap = igap;
+    }
+    newGap = newGap * (1 + deltaAsPercent);
+  }
+  //longest/shortest Dur = igap * Math.pow( (1+changeDeltaAsPercent), numOfCycles )
+  return eventsArray;
+}
+// </editor-fold>     END EVENTS - GENERATE EVENTS //
+
+// <editor-fold>      <<<< EVENTS - MAKE RUNWAY EVENTS //
+// var tTr;
+// var tripos = 0 +3;
+// var trpos = tripos;
+// var trinc = 0;
+//0 is event start gofret
+function mkRunwayEvents(eventsArray) {
+  var tEventMatrix = [];
+  var teventMeshIx = 0;
+  for (var i = 0; i < eventsArray.length; i++) {
+    var tEventSet = [];
+    var tTimeGopxGoFrm = [];
+    var tTime = eventsArray[i][0];
+    var tDur = eventsArray[i][1];
+    tTime = tTime + timeAdjustment;
+    var tEventLength = tDur * RUNWAY_PXPERSEC;
+    var tNumPxTilGo = tTime * RUNWAY_PXPERSEC;
+    var tiGoPx = RUNWAY_GOFRETPOS_Y + tNumPxTilGo;
+    var tGoFrm = Math.round(tNumPxTilGo / RUNWAY_PXPERFRAME);
+    var tempMatl = new THREE.MeshLambertMaterial({
+      color: clr_neonMagenta,
+    });
+    // var texture = new THREE.TextureLoader().load( 'textures/polka-dots-938430_1280.jpg', function ( texture ) {
+    //     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+    //     texture.offset.set( 0, 0 );
+    //     texture.repeat.set( 2, 35);
+    // } );
+    // var tempMatl = new THREE.MeshBasicMaterial( { map: texture } );
+    var teventdurframes = Math.round(tDur * FRAMERATE);
+    var tOffFrm = tGoFrm + teventdurframes;
+    var tEventGeom = new THREE.CylinderGeometry(TRACK_DIAMETER + 3, TRACK_DIAMETER + 3, tEventLength, 32);
+    var tEventMesh = new THREE.Mesh(tEventGeom, tempMatl);
+    tEventMesh.position.y = tiGoPx + (tEventLength / 2.0);
+    tEventMesh.position.z = -(RUNWAYLENGTH / 2);
+    tEventMesh.position.x = 0;
+    tEventMesh.name = "runwayEvent" + teventMeshIx;
+    teventMeshIx++;
+    var tnewCresEvent = [true, tEventMesh, tGoFrm, tTime, tNumPxTilGo, tiGoPx, tOffFrm, tEventLength];
+    tEventMatrix.push(tnewCresEvent);
+  }
+  return tEventMatrix;
+}
+// </editor-fold>     END EVENTS - MAKE RUNWAY EVENTS //
+
+// <editor-fold>      <<<< EVENTS - ANIMATE RUNWAY EVENTS //
+function animateRunwayEvents(eventMatrix) {
+  for (var i = 0; i < eventMatrix.length; i++) {
+    var t_mesh = eventMatrix[i][1];
+    var t_renderGate = eventMatrix[i][0];
+    var t_eventLen = eventMatrix[i][7];
+    // - (t_eventLen/2) is because y=0 is the center of the object
+    var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
+    var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
+    var t_goFrame = Math.round(eventMatrix[i][2]);
+    var t_endFrame = Math.round(eventMatrix[i][6]);
+    //add the tf to the scene if it is on the runway
+    if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+      if (t_renderGate) {
+        eventMatrix[i][0] = false;
+        runwayNO.conveyor.add(t_mesh);
+        runwayNO.scene.add(runwayNO.conveyor);
+      }
+    }
+    //advance tf if it is not past gofret
+    if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+      t_mesh.position.y -= RUNWAY_PXPERFRAME;
+    }
+    //When tf reaches goline, blink and remove
+    if (framect >= t_goFrame && framect <= t_endFrame) {
+      // crvFollowData[sec3Cres[i]][0] = true;
+      // crvFollowData[sec3Cres[i]][1] = scale(framect, eventMatrix[i][2], eventMatrix[i][6], 0.0, 1.0);
+    }
+    //end of event remove
+    if (framect == t_endFrame) {
+      // crvFollowData[sec3Cres[i]][0] = false;
+      var obj2Rmv = runwayNO.scene.getObjectByName(t_mesh.name);
+      runwayNO.conveyor.remove(obj2Rmv);
+    }
+    //crv follow
+    // var tnewCresEvent = [true, tcresEventMesh, tGoFrm, tTime, tNumPxTilGo, tiGoPx, tOffFrm, tcresEventLength]; //[gate so tempofret is added to scene only once, mesh, goFrame]
+    // if (crvFollowData[sec3Cres[i]][0]) {
+    //   var tcoordsix = Math.floor(scale(crvFollowData[sec3Cres[i]][1], 0.0, 1.0, 0, cresCrvCoords.length));
+    //   //circ
+    //   cresCrvFollowers[sec3Cres[i]].setAttributeNS(null, "cx", cresCrvCoords[tcoordsix].x.toString());
+    //   cresCrvFollowers[sec3Cres[i]].setAttributeNS(null, "cy", cresCrvCoords[tcoordsix].y.toString());
+    //   //rect
+    //   var temph = notationCanvasH - cresCrvCoords[tcoordsix].y;
+    //   cresCrvFollowersRect[sec3Cres[i]].setAttributeNS(null, "y", cresCrvCoords[tcoordsix].y.toString());
+    //   cresCrvFollowersRect[sec3Cres[i]].setAttributeNS(null, "height", temph.toString());
+    // }
+  }
+}
+// </editor-fold>     END EVENTS - ANIMATE RUNWAY EVENTS //
+
+// </editor-fold> END EVENTS ////////////////////////////////////
 
 
 // <editor-fold> <<<< CONTROL PANEL >>>> ----------------------------------- //
 
 // <editor-fold>       <<<< CONTROL PANEL - INIT >>>> ----------- //
-var ctrlPanelH = 70;
 
 function mkCtrlPanel(panelid, w, h, title) {
   var tpanel;
@@ -503,12 +375,9 @@ function mkCtrlPanel(panelid, w, h, title) {
   generateNotationButton.style.left = "0px";
   generateNotationButton.addEventListener("click", function() {
     if (activateButtons) {
-      var newNotationArr = [];
-      dials.forEach((it, ix) => {
-        newNotationArr.push(it.generateNotesArr());
-      });
+      var runwayEvents1 = generateCresEvents(14, 4, 0.1, 10);
       socket.emit('createEvents', {
-        eventDataArr: newNotationArr
+        eventDataArr: runwayEvents1
       });
     }
   });
@@ -914,9 +783,7 @@ socket.on('startpiecebroadcast', function(data) {
 // <editor-fold>       <<<< SOCKET IO - CREATE EVENTS >>>> ------ //
 socket.on('createEventsBroadcast', function(data) {
   var eventDataArr = data.eventDataArr;
-  eventDataArr.forEach((it, ix) => {
-    dials[ix].generateNotation(it);
-  });
+  runwayEventsMatrix = mkRunwayEvents(eventDataArr);
   if (startPieceGate) {
     activateStartBtn = true;
     activateSaveBtn = true;
@@ -985,14 +852,15 @@ socket.on('newTempoBroadcast', function(data) {
 // <editor-fold>        <<<< UPDATE >>>> ----------------------- //
 function update(aMSPERFRAME, currTimeMS) {
   framect++;
-  dials.forEach((it, ix) => {
-    it.animateFunc(currTimeMS);
-  });
+  animateRunwayEvents(runwayEventsMatrix);
 }
 // </editor-fold>       END UPDATE ////////////////////////////////
 
 // <editor-fold>        <<<< DRAW >>>> ------------------------- //
-function draw() {}
+function draw() {
+  // RENDER ///////////////////////////////////////////////////////////////
+  runwayNO.renderer.render(runwayNO.scene, runwayNO.camera);
+}
 // </editor-fold>       END DRAW //////////////////////////////////
 
 // <editor-fold>        <<<< ANIMATION ENGINE >>>> ------------- //
@@ -1061,6 +929,17 @@ function mkSVGcanvas(canvasID, w, h) {
   return tsvgCanvas;
 }
 // </editor-fold>      END MAKE SVG CANVAS ///////////////////////////
+
+// <editor-fold>       <<<< MAKE CANVAS DIV >>>> ------------------ //
+function mkCanvasDiv(canvasID, w, h, clr) {
+  var t_div = document.createElement("div");
+  t_div.style.width = w.toString() + "px";
+  t_div.style.height = h.toString() + "px";
+  t_div.style.background = clr;
+  t_div.id = canvasID;
+  return t_div;
+}
+// </editor-fold>      END MAKE CANVAS DIV ///////////////////////////
 
 // <editor-fold>       <<<< MAKE JSPANEL >>>> --------------------- //
 function mkPanel(panelid, svgcanvas, w, h, title) {

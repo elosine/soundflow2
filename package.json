@@ -1,7 +1,7 @@
 {
-  "name": "soundflow2",
+  "name": "lineandmotion",
   "version": "0.0.001",
-  "description": ,
+  "description": "Template to create pieces in the Lineandmotion notation environment",
   "engines": {
     "node": "12.x"
   },
