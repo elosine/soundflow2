@@ -28,7 +28,7 @@ var RUNWAY_PXPERMS = RUNWAY_PXPERSEC / 1000.0;
 var RUNWAY_PXPERFRAME = RUNWAY_PXPERSEC / FRAMERATE;
 var RUNWAY_GOFRETPOS_Y = -RUNWAYLENGTH / 2;
 var RUNWAY_GOFRETHEIGHT = 4;
-var maxPieceDur = 3600;
+var PIECE_MAX_DURATION = 3600;
 var timeAdjustment = 0;
 // SVG ---------------------------- >
 var SVG_NS = "http://www.w3.org/2000/svg";
@@ -62,12 +62,13 @@ var clr_purple = new THREE.Color("rgb(255, 0, 255)");
 var clr_neonRed = new THREE.Color("rgb(255, 37, 2)");
 var clr_safetyOrange = new THREE.Color("rgb(255, 103, 0)");
 var clr_green = new THREE.Color("rgb(0, 255, 0)");
-// EVENTS --------------------- >
-var runwayEventsMatrix;
-var runwayNO;
-
+// EVENTS --------------------------------- >
+var curveAlgoArray1 = [14, 4, 0.1, 10]; //[cresDur, igap, deltaAsPercent, numOfCycles]
+var runwayCurveFollowNO;
+var eventDataForAll; //global event data stored here; events are sent through the network to all players
+var myEventsMatrix;
 // RUN BEFORE INIT ------------------------ >
-//// TIMESYNC ENGINE ------------ //
+////-- TIMESYNC ENGINE --////
 var tsServer;
 if (window.location.hostname == 'localhost') {
   tsServer = '/timesync';
@@ -83,52 +84,73 @@ var ts = timesync.create({
 
 
 // <editor-fold> <<<< START UP SEQUENCE >>>> ------------------------------- //
-//Start-Up Sequence Documentation
-////Generate Piece creates events from this client and sends through Socket
-////When received generates the eventMatrix with 3js objects
-
+//START UP SEQUENCE DOCUMENTATION
+//// --> init() is run from html
+//// --------> It makes the controlPanel and generates static elements
+//// --> The ctrlPanel:MakePiece/LoadPiece button:
+//// --------> Generates events
+//// --------> Sends eventData to all clients
+//// --> The ctrlPanel:Start button runs the startPiece():
+//// --------> Starts clockSync engine
+//// --------> Starts Animation Engine
 // INIT --------------------------------------------------- //
 function init() { //run from html onload='init();'
   // 01: MAKE CONTROL PANEL ---------------- >
   controlPanel = mkCtrlPanel("ctrlPanel", ctrlPanelW, ctrlPanelH, "Control Panel");
+  // 02: GENERATE STATIC ELEMENTS ---------------- >
+  runwayCurveFollowNO = mkNotationObject_runwayCurveFollow(0, SCENE_W, SCENE_H, RUNWAYLENGTH);
 }
-
-// 03: GENERATE STATIC ELEMENTS ---------------- >
-runwayNO = mkNotationObject_runway(0, SCENE_W, SCENE_H, RUNWAYLENGTH);
-
+// FUNCTION: startPiece ----------------------------------- //
+function startPiece() {
+  startClockSync();
+  requestAnimationFrame(animationEngine);
+}
 // FUNCTION: startClockSync ------------------------------- //
 function startClockSync() {
   var t_now = new Date(ts.now());
   lastFrameTimeMs = t_now.getTime();
   startTime = lastFrameTimeMs;
 }
-// FUNCTION: startPiece ----------------------------------- //
-function startPiece() {
-  startClockSync();
-  requestAnimationFrame(animationEngine); //change to gate
-}
 // </editor-fold> END START UP SEQUENCE ///////////////////////////////////////
 
 
-// <editor-fold> <<<< NOTATION OBJECT >>>> ---------------------------- //
+// <editor-fold> <<<< NOTATION OBJECT - RUNWAY_CURVEFOLLOW >>>> ------------ //
 
-// <editor-fold>        <<<< NOTATION OBJECT - INIT >>>> -- //
-function mkNotationObject_runway(ix, w, h, len) {
+// <editor-fold>    <<<< NOTATION OBJECT - INIT >>>> ---------------- //
+function mkNotationObject_runwayCurveFollow(ix, w, h, len) {
   var notationObj = {};
+  // Curve Follower
+  var CRV_H = 170;
+  var CRV_W = w - 4;
+  var crvCoords = plot(function(x) {
+    return Math.pow(x, 3);
+  }, [0, 1, 0, 1], CRV_W, CRV_H);
+  var crvFollowData = [];
+
   // Generate ID
-  var id = 'runway' + ix;
+  var id = 'runwayCurveFollow' + ix;
   notationObj['id'] = id;
-  // Make Canvas(es) ------------- >
-  var canvasID = id + 'canvas';
-  var canvas = mkCanvasDiv(canvasID, w, h, '#000000');
-  notationObj['canvas'] = canvas;
-  // Make jsPanel ----------------- >
-  var panelID = id + 'panel';
-  var panel = mkPanel(panelID, canvas, w, h, "Player " + ix.toString());
-  notationObj['panel'] = panel;
+  // Make Canvases ------------- >
+  //// Runway ////
+  var runwayCanvasID = id + 'runwayCanvas';
+  var runwayCanvas = mkCanvasDiv(runwayCanvasID, w, h, '#000000');
+  notationObj['runwayCanvas'] = runwayCanvas;
+  //// Curve Follower ////
+  var crvFollowCanvasID = id + 'crvFollowCanvas';
+  var crvFollowCanvas = mkSVGcanvas(crvFollowCanvasID, CRV_W, CRV_H);
+  notationObj['crvFollowCanvas'] = crvFollowCanvas;
+  // Make jsPanels ----------------- >
+  //// Runway ////
+  var runwayPanelID = id + 'runwayPanel';
+  var runwayPanel = mkPanel(runwayPanelID, runwayCanvas, w, h, "Player " + ix.toString() + "Runway", ['center-top', '0px', '0px', 'none']);
+  notationObj['runwayPanel'] = runwayPanel;
+  //// Curve Follower ////
+  var crvFollowPanelID = id + 'crvFollowPanel';
+  var crvFollowPanel = mkPanel(crvFollowPanelID, crvFollowCanvas, CRV_W, CRV_H, "Player " + ix.toString(), ['center-top', '0px', h.toString(), 'down']);
+  notationObj['crvFollowPanel'] = crvFollowPanel;
   // </editor-fold>       END NOTATION OBJECT - INIT /////////
 
-  // <editor-fold>        <<<< NOTATION OBJECT - 3JS >>>> -- //
+  // <editor-fold>  <<<< NOTATION OBJECT - 3JS >>>> ----------------- //
   // CAMERA ----------------- >
   var camera = new THREE.PerspectiveCamera(75, w / h, 1, 3000);
   camera.position.set(0, CAM_Y, CAM_Z);
@@ -151,12 +173,13 @@ function mkNotationObject_runway(ix, w, h, len) {
   // RENDERER ----------------- >
   var renderer = new THREE.WebGLRenderer();
   renderer.setSize(w, h);
-  canvas.appendChild(renderer.domElement);
+  runwayCanvas.appendChild(renderer.domElement);
   notationObj['renderer'] = renderer;
   // </editor-fold>       END NOTATION OBJECT - INIT /////////
 
-  // <editor-fold>      <<<< NOTATION OBJECT - STATIC ELEMENTS //
-  // RUNWAY ----------------- >
+  // <editor-fold>  <<<< NOTATION OBJECT - STATIC ELEMENTS >>>> ----- //
+  // RUNWAY ----------------------------------------------- //
+  //// Runway -------------------------- >
   var conveyor = new THREE.Group();
   var t_runwayW = w * 0.67;
   var runwayMatl =
@@ -171,7 +194,7 @@ function mkNotationObject_runway(ix, w, h, len) {
   runway.position.z = -len / 2;
   conveyor.add(runway);
   notationObj['runway'] = runway;
-  // TRACK ----------------- >
+  //// Track -------------------------- >
   var trgeom = new THREE.CylinderGeometry(TRACK_DIAMETER, TRACK_DIAMETER, len, 32);
   var trmatl = new THREE.MeshLambertMaterial({
     color: 0x708090
@@ -182,7 +205,7 @@ function mkNotationObject_runway(ix, w, h, len) {
   tTr.position.x = 0;
   conveyor.add(tTr);
   notationObj['track'] = tTr;
-  // FRETS ----------------- >
+  //// Frets --------------------------- >
   var fretGeom = new THREE.CylinderGeometry(2, 2, t_runwayW, 32);
   var fretMatl = new THREE.MeshLambertMaterial({
     color: clr_seaGreen
@@ -195,7 +218,7 @@ function mkNotationObject_runway(ix, w, h, len) {
     t_fret.position.y = RUNWAYSTART - (t_fretGap * (i + 1));
     conveyor.add(t_fret);
   }
-  //GO FRET
+  //// Go Fret ------------------------ >
   var goFretGeom = new THREE.CylinderGeometry(4, 4, t_runwayW, 32);
   var goFretMatl = new THREE.MeshLambertMaterial({
     color: clr_neonMagenta
@@ -205,64 +228,161 @@ function mkNotationObject_runway(ix, w, h, len) {
   goFret.position.z = -(len / 2);
   goFret.position.y = -RUNWAYLENGTH / 2;
   conveyor.add(goFret);
+  // CURVE FOLLOWER --------------------------------------------- //
+  //// Curve Follow Rect -------------- >
+  var tcrvFollowRect = document.createElementNS(SVG_NS, "rect");
+  tcrvFollowRect.setAttributeNS(null, "x", "0");
+  tcrvFollowRect.setAttributeNS(null, "y", CRV_W.toString());
+  tcrvFollowRect.setAttributeNS(null, "width", CRV_W);
+  tcrvFollowRect.setAttributeNS(null, "height", 0);
+  tcrvFollowRect.setAttributeNS(null, "fill", "rgba(255, 21, 160, 0.5)");
+  tcrvFollowRect.setAttributeNS(null, "id", id + "crvFollowRect");
+  // tcrvFollowRect.setAttributeNS(null, "transform", "translate( 0, -2)");
+  crvFollowCanvas.appendChild(tcrvFollowRect);
+  notationObj['crvFollowRect'] = tcrvFollowRect;
+  //// Curve -------------------------- >
+  var tSvgCrv = document.createElementNS(SVG_NS, "path");
+  var tpathstr = "";
+  for (var i = 0; i < crvCoords.length; i++) {
+    if (i == 0) {
+      tpathstr = tpathstr + "M" + crvCoords[i].x.toString() + " " + crvCoords[i].y.toString() + " ";
+    } else {
+      tpathstr = tpathstr + "L" + crvCoords[i].x.toString() + " " + crvCoords[i].y.toString() + " ";
+    }
+  }
+  tSvgCrv.setAttributeNS(null, "d", tpathstr);
+  tSvgCrv.setAttributeNS(null, "stroke", "rgba(255, 21, 160, 0.5)");
+  tSvgCrv.setAttributeNS(null, "stroke-width", "4");
+  tSvgCrv.setAttributeNS(null, "fill", "none");
+  tSvgCrv.setAttributeNS(null, "id", id + "crv");
+  // tSvgCrv.setAttributeNS(null, "transform", "translate( 0, -2)");
+  crvFollowCanvas.appendChild(tSvgCrv);
+  notationObj['crv'] = tSvgCrv;
+  //// Curve Follower ---------------- >
+  var tSvgCirc = document.createElementNS(SVG_NS, "circle");
+  tSvgCirc.setAttributeNS(null, "cx", crvCoords[0].x.toString());
+  tSvgCirc.setAttributeNS(null, "cy", crvCoords[0].y.toString());
+  tSvgCirc.setAttributeNS(null, "r", "10");
+  tSvgCirc.setAttributeNS(null, "stroke", "none");
+  tSvgCirc.setAttributeNS(null, "fill", "rgba(255, 21, 160, 0.5)");
+  tSvgCirc.setAttributeNS(null, "id", id + "crvCirc");
+  // tSvgCirc.setAttributeNS(null, "transform", "translate( 0, -3)");
+  crvFollowCanvas.appendChild(tSvgCirc);
+  notationObj['crvCirc'] = tSvgCirc;
+  //Make Follower Data for maping in animation [gate, currentCoord]
+  var tcrvFset = [];
+  tcrvFset.push(true);
+  tcrvFset.push(0.0);
+  crvFollowData.push(tcrvFset);
   // </editor-fold>     END NOTATION OBJECT - STATIC ELEMENTS //
 
-  // <editor-fold>      <<<< NOTATION OBJECT - 3JS RENDER ACTIONS //
+  // <editor-fold>  <<<< NOTATION OBJECT - 3JS RENDER ACTIONS >>>> -- //
   // ROTATE GROUP ----------------- >
   conveyor.rotation.x = rads(RUNWAY_ROTATION_X);
   scene.add(conveyor);
   notationObj['conveyor'] = conveyor;
   // RENDER ----------------- >
   renderer.render(scene, camera);
-  // </editor-fold>     END NOTATION OBJECT - 3JS RENDER ACTIONS //
+  // </editor-fold>    END NOTATION OBJECT - 3JS RENDER ACTIONS >> -- //
+
+  // <editor-fold>  <<<< NOTATION OBJECT - ANIMATE >>>> ------------- //
+  notationObj['animate'] = function(eventMatrix) {
+    for (var i = 0; i < eventMatrix.length; i++) {
+      var t_mesh = eventMatrix[i][1];
+      var t_renderGate = eventMatrix[i][0];
+      var t_eventLen = eventMatrix[i][7];
+      // - (t_eventLen/2) is because y=0 is the center of the object
+      var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
+      var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
+      var t_goFrame = Math.round(eventMatrix[i][2]);
+      var t_endFrame = Math.round(eventMatrix[i][6]);
+      //add the tf to the scene if it is on the runway
+      if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+        if (t_renderGate) {
+          eventMatrix[i][0] = false;
+          conveyor.add(t_mesh);
+          scene.add(conveyor);
+        }
+      }
+      //advance tf if it is not past gofret
+      if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+        t_mesh.position.y -= RUNWAY_PXPERFRAME;
+      }
+      //When tf reaches goline, blink and remove
+      if (framect >= t_goFrame && framect <= t_endFrame) {
+        crvFollowData[0] = true;
+        crvFollowData[1] = scale(framect, t_goFrame, t_endFrame, 0.0, 1.0);
+      }
+      //end of event remove
+      if (framect == t_endFrame) {
+        //Reset Curve Follower
+        crvFollowData[0] = false;
+        tSvgCirc.setAttributeNS(null, "cx", crvCoords[0].x.toString());
+        tSvgCirc.setAttributeNS(null, "cy", crvCoords[0].y.toString());
+        tcrvFollowRect.setAttributeNS(null, "y", CRV_W.toString());
+        tcrvFollowRect.setAttributeNS(null, "height", 0);
+        //Remove runway event
+        var obj2Rmv = scene.getObjectByName(t_mesh.name);
+        conveyor.remove(obj2Rmv);
+      }
+      //crv follow
+      if (crvFollowData[0]) {
+        var tcoordsix = Math.floor(scale(crvFollowData[1], 0.0, 1.0, 0, crvCoords.length));
+        //circ
+        tSvgCirc.setAttributeNS(null, "cx", crvCoords[tcoordsix].x.toString());
+        tSvgCirc.setAttributeNS(null, "cy", crvCoords[tcoordsix].y.toString());
+        //rect
+        var temph = CRV_H - crvCoords[tcoordsix].y;
+        tcrvFollowRect.setAttributeNS(null, "y", crvCoords[tcoordsix].y.toString());
+        tcrvFollowRect.setAttributeNS(null, "height", temph.toString());
+      }
+    }
+  }
+  // </editor-fold>    END NOTATION OBJECT - ANIMATE >>>> ----------- //
+
   return notationObj;
 }
-// </editor-fold> END NOTATION OBJECT ////////////////////////////////////
+// </editor-fold> <<<< END NOTATION OBJECT >>>> ---------------------------- //
 
 
 // <editor-fold> <<<< EVENTS >>>> ---------------------------- //
 
-// <editor-fold>      <<<< EVENTS - GENERATE EVENTS //
-//These are events that have equal length and
-//gaps between events that increase a percentage each event
-//for a certain number of events then reverts to the initial gap
-function generateCresEvents(cresDur, igap, deltaAsPercent, numOfCycles) {
-  var eventsArray = [];
+// <editor-fold>      <<<< EVENTS - GENERATE EVENT DATA //
+//Events have equal length
+//Gaps between events increase a percentage each event for a certain number
+//of events then revert to the initial gap growing again
+function generateEventData(cresDur, igap, deltaAsPercent, numOfCycles) {
+  var eventDataArray = [];
   var newGap = igap;
-  var maxNumEvents = maxPieceDur / cresDur;
+  var maxNumEvents = PIECE_MAX_DURATION / cresDur;
   var currCycle = 0;
   var goTime = 0;
-  eventsArray.push([goTime, cresDur]);
+  eventDataArray.push([goTime, cresDur]);
   for (var i = 0; i < maxNumEvents; i++) {
     var tempArr = [];
     goTime = goTime + cresDur + newGap;
     tempArr.push(goTime);
     tempArr.push(cresDur);
-    eventsArray.push(tempArr);
+    eventDataArray.push(tempArr);
     if ((currCycle % numOfCycles) == 0) {
       newGap = igap;
     }
     newGap = newGap * (1 + deltaAsPercent);
   }
   //longest/shortest Dur = igap * Math.pow( (1+changeDeltaAsPercent), numOfCycles )
-  return eventsArray;
+  return eventDataArray;
 }
-// </editor-fold>     END EVENTS - GENERATE EVENTS //
+// </editor-fold>     END EVENTS - GENERATE EVENT DATA //
 
-// <editor-fold>      <<<< EVENTS - MAKE RUNWAY EVENTS //
-// var tTr;
-// var tripos = 0 +3;
-// var trpos = tripos;
-// var trinc = 0;
-//0 is event start gofret
-function mkRunwayEvents(eventsArray) {
+// <editor-fold>      <<<< EVENTS - MAKE EVENTS //
+function mkEvents(eventsData) {
   var tEventMatrix = [];
   var teventMeshIx = 0;
-  for (var i = 0; i < eventsArray.length; i++) {
+  for (var i = 0; i < eventsData.length; i++) {
     var tEventSet = [];
     var tTimeGopxGoFrm = [];
-    var tTime = eventsArray[i][0];
-    var tDur = eventsArray[i][1];
+    var tTime = eventsData[i][0];
+    var tDur = eventsData[i][1];
     tTime = tTime + timeAdjustment;
     var tEventLength = tDur * RUNWAY_PXPERSEC;
     var tNumPxTilGo = tTime * RUNWAY_PXPERSEC;
@@ -271,12 +391,6 @@ function mkRunwayEvents(eventsArray) {
     var tempMatl = new THREE.MeshLambertMaterial({
       color: clr_neonMagenta,
     });
-    // var texture = new THREE.TextureLoader().load( 'textures/polka-dots-938430_1280.jpg', function ( texture ) {
-    //     texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-    //     texture.offset.set( 0, 0 );
-    //     texture.repeat.set( 2, 35);
-    // } );
-    // var tempMatl = new THREE.MeshBasicMaterial( { map: texture } );
     var teventdurframes = Math.round(tDur * FRAMERATE);
     var tOffFrm = tGoFrm + teventdurframes;
     var tEventGeom = new THREE.CylinderGeometry(TRACK_DIAMETER + 3, TRACK_DIAMETER + 3, tEventLength, 32);
@@ -291,57 +405,57 @@ function mkRunwayEvents(eventsArray) {
   }
   return tEventMatrix;
 }
-// </editor-fold>     END EVENTS - MAKE RUNWAY EVENTS //
+// </editor-fold>     END EVENTS - MAKE EVENTS //
 
-// <editor-fold>      <<<< EVENTS - ANIMATE RUNWAY EVENTS //
-function animateRunwayEvents(eventMatrix) {
-  for (var i = 0; i < eventMatrix.length; i++) {
-    var t_mesh = eventMatrix[i][1];
-    var t_renderGate = eventMatrix[i][0];
-    var t_eventLen = eventMatrix[i][7];
-    // - (t_eventLen/2) is because y=0 is the center of the object
-    var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
-    var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
-    var t_goFrame = Math.round(eventMatrix[i][2]);
-    var t_endFrame = Math.round(eventMatrix[i][6]);
-    //add the tf to the scene if it is on the runway
-    if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
-      if (t_renderGate) {
-        eventMatrix[i][0] = false;
-        runwayNO.conveyor.add(t_mesh);
-        runwayNO.scene.add(runwayNO.conveyor);
-      }
-    }
-    //advance tf if it is not past gofret
-    if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
-      t_mesh.position.y -= RUNWAY_PXPERFRAME;
-    }
-    //When tf reaches goline, blink and remove
-    if (framect >= t_goFrame && framect <= t_endFrame) {
-      // crvFollowData[sec3Cres[i]][0] = true;
-      // crvFollowData[sec3Cres[i]][1] = scale(framect, eventMatrix[i][2], eventMatrix[i][6], 0.0, 1.0);
-    }
-    //end of event remove
-    if (framect == t_endFrame) {
-      // crvFollowData[sec3Cres[i]][0] = false;
-      var obj2Rmv = runwayNO.scene.getObjectByName(t_mesh.name);
-      runwayNO.conveyor.remove(obj2Rmv);
-    }
-    //crv follow
-    // var tnewCresEvent = [true, tcresEventMesh, tGoFrm, tTime, tNumPxTilGo, tiGoPx, tOffFrm, tcresEventLength]; //[gate so tempofret is added to scene only once, mesh, goFrame]
-    // if (crvFollowData[sec3Cres[i]][0]) {
-    //   var tcoordsix = Math.floor(scale(crvFollowData[sec3Cres[i]][1], 0.0, 1.0, 0, cresCrvCoords.length));
-    //   //circ
-    //   cresCrvFollowers[sec3Cres[i]].setAttributeNS(null, "cx", cresCrvCoords[tcoordsix].x.toString());
-    //   cresCrvFollowers[sec3Cres[i]].setAttributeNS(null, "cy", cresCrvCoords[tcoordsix].y.toString());
-    //   //rect
-    //   var temph = notationCanvasH - cresCrvCoords[tcoordsix].y;
-    //   cresCrvFollowersRect[sec3Cres[i]].setAttributeNS(null, "y", cresCrvCoords[tcoordsix].y.toString());
-    //   cresCrvFollowersRect[sec3Cres[i]].setAttributeNS(null, "height", temph.toString());
-    // }
-  }
-}
-// </editor-fold>     END EVENTS - ANIMATE RUNWAY EVENTS //
+// // <editor-fold>      <<<< EVENTS - ANIMATE EVENTS //
+// function animateRunwayEvents(eventMatrix) {
+//   for (var i = 0; i < eventMatrix.length; i++) {
+//     var t_mesh = eventMatrix[i][1];
+//     var t_renderGate = eventMatrix[i][0];
+//     var t_eventLen = eventMatrix[i][7];
+//     // - (t_eventLen/2) is because y=0 is the center of the object
+//     var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
+//     var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
+//     var t_goFrame = Math.round(eventMatrix[i][2]);
+//     var t_endFrame = Math.round(eventMatrix[i][6]);
+//     //add the tf to the scene if it is on the runway
+//     if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+//       if (t_renderGate) {
+//         eventMatrix[i][0] = false;
+//         runwayNO.conveyor.add(t_mesh);
+//         runwayNO.scene.add(runwayNO.conveyor);
+//       }
+//     }
+//     //advance tf if it is not past gofret
+//     if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+//       t_mesh.position.y -= RUNWAY_PXPERFRAME;
+//     }
+//     //When tf reaches goline, blink and remove
+//     if (framect >= t_goFrame && framect <= t_endFrame) {
+//       crvFollowData[0] = true;
+//       crvFollowData[1] = scale(framect, t_goFrame, t_endFrame, 0.0, 1.0);
+//     }
+//     //end of event remove
+//     if (framect == t_endFrame) {
+//       crvFollowData[0] = false;
+//       var obj2Rmv = runwayNO.scene.getObjectByName(t_mesh.name);
+//       runwayNO.conveyor.remove(obj2Rmv);
+//     }
+//     //crv follow
+//     if (crvFollowData[0]) {
+//       var tcoordsix = Math.floor(scale(crvFollowData[1], 0.0, 1.0, 0, crvCoords.length));
+//       //circ
+//       curveNO.crvCirc.setAttributeNS(null, "cx", crvCoords[tcoordsix].x.toString());
+//       curveNO.crvCirc.setAttributeNS(null, "cy", crvCoords[tcoordsix].y.toString());
+//
+//       //rect
+//       var temph = CRV_H - crvCoords[tcoordsix].y;
+//       curveNO.crvFollowRect.setAttributeNS(null, "y", crvCoords[tcoordsix].y.toString());
+//       curveNO.crvFollowRect.setAttributeNS(null, "height", temph.toString());
+//     }
+//   }
+// }
+// // </editor-fold>     END EVENTS - ANIMATE EVENTS //
 
 // </editor-fold> END EVENTS ////////////////////////////////////
 
@@ -375,9 +489,9 @@ function mkCtrlPanel(panelid, w, h, title) {
   generateNotationButton.style.left = "0px";
   generateNotationButton.addEventListener("click", function() {
     if (activateButtons) {
-      var runwayEvents1 = generateCresEvents(14, 4, 0.1, 10);
+      eventDataForAll = generateEventData(14, 4, 0.1, 10);
       socket.emit('createEvents', {
-        eventDataArr: runwayEvents1
+        eventDataArr: eventDataForAll
       });
     }
   });
@@ -705,7 +819,7 @@ function mkCtrlPanel(panelid, w, h, title) {
 // </editor-fold> END CONTROL PANEL ///////////////////////////////////////////
 
 
-// <editor-fold>     <<<< CLOCK >>>> --------------------------------------- //
+// <editor-fold> <<<< CLOCK >>>> ------------------------------------------- //
 
 // <editor-fold>       <<<< FUNCTION CALC CLOCK >>>> -------------- //
 function calcClock(time) {
@@ -783,7 +897,8 @@ socket.on('startpiecebroadcast', function(data) {
 // <editor-fold>       <<<< SOCKET IO - CREATE EVENTS >>>> ------ //
 socket.on('createEventsBroadcast', function(data) {
   var eventDataArr = data.eventDataArr;
-  runwayEventsMatrix = mkRunwayEvents(eventDataArr);
+  // Generate events for this player from event data here and store in eventsArray
+  myEventsMatrix = mkEvents(eventDataArr);
   if (startPieceGate) {
     activateStartBtn = true;
     activateSaveBtn = true;
@@ -852,14 +967,14 @@ socket.on('newTempoBroadcast', function(data) {
 // <editor-fold>        <<<< UPDATE >>>> ----------------------- //
 function update(aMSPERFRAME, currTimeMS) {
   framect++;
-  animateRunwayEvents(runwayEventsMatrix);
+  runwayCurveFollowNO.animate(myEventsMatrix);
 }
 // </editor-fold>       END UPDATE ////////////////////////////////
 
 // <editor-fold>        <<<< DRAW >>>> ------------------------- //
 function draw() {
   // RENDER ///////////////////////////////////////////////////////////////
-  runwayNO.renderer.render(runwayNO.scene, runwayNO.camera);
+  runwayCurveFollowNO.renderer.render(runwayCurveFollowNO.scene, runwayCurveFollowNO.camera);
 }
 // </editor-fold>       END DRAW //////////////////////////////////
 
@@ -942,10 +1057,25 @@ function mkCanvasDiv(canvasID, w, h, clr) {
 // </editor-fold>      END MAKE CANVAS DIV ///////////////////////////
 
 // <editor-fold>       <<<< MAKE JSPANEL >>>> --------------------- //
-function mkPanel(panelid, svgcanvas, w, h, title) {
+function mkPanel(panelid, svgcanvas, w, h, title, posArr) {
   var tpanel;
+  var posString = posArr[0];
+  var offsetX = posArr[1];
+  var offsetY = posArr[2];
+  var autoposition = posArr[3];
   jsPanel.create({
-    position: 'center-top',
+    // position: 'center-top',
+    //  position: {
+    //     bottom: 50,
+    //     right: 50
+    // },
+    position: {
+      my: posString,
+      at: posString,
+      offsetX: offsetX,
+      offsetY: offsetY,
+      autoposition: autoposition
+    },
     id: panelid,
     contentSize: w.toString() + " " + h.toString(),
     header: 'auto-show-hide',
