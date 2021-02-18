@@ -36,7 +36,7 @@ var SVG_XLINK = 'http://www.w3.org/1999/xlink';
 // CONTROL PANEL ------------------ >
 var controlPanel;
 var ctrlPanelH = 70;
-var ctrlPanelW = 360;
+var ctrlPanelW = 310;
 // BUTTONS ------------------------ >
 var activateButtons = true; //use this if you need to do some time consuming processing before anything else
 var activateStartBtn = false;
@@ -687,92 +687,6 @@ function mkCtrlPanel(panelid, w, h, title) {
   });
   ctrlPanelDiv.appendChild(saveBtn);
   // </editor-fold>    END CONTROL PANEL - SAVE ////////////////////
-
-  // <editor-fold>     <<<< CONTROL PANEL - TEMPO >>>> ---------- //
-  var tempoInputField = document.createElement("input");
-  tempoInputField.type = 'text';
-  tempoInputField.className = 'input__field--yoshiko';
-  tempoInputField.id = 'tempoInputField';
-  // tempoInputField.value = bpm;
-  var inputW = (btnW - 15).toString() + "px";
-  tempoInputField.style.width = inputW;
-  var inputH = (btnH - 42).toString() + "px";
-  tempoInputField.style.height = inputH;
-  tempoInputField.style.top = "-4px";
-  var tSpace = (btnSpace * 6) - 3;
-  tSpace = tSpace.toString() + "px";
-  tempoInputField.style.left = tSpace;
-  tempoInputField.addEventListener("click", function() {
-    tempoInputField.focus();
-    tempoInputField.select();
-  });
-  tempoInputField.addEventListener("keyup", function(e) {
-    if (e.keyCode === 13) {
-      if (activateButtons) {
-        socket.emit('newTempo', {
-          newTempo: tempoInputField.value
-        });
-      }
-    }
-  });
-  ctrlPanelDiv.appendChild(tempoInputField);
-  // TEMPO INPUT FIELD Label
-  var tempoInputFieldLbl = document.createElement("label");
-  tempoInputFieldLbl.for = 'tempoInputField';
-  tempoInputFieldLbl.style.left = tSpace;
-  tempoInputFieldLbl.style.top = "-8px";
-  tempoInputFieldLbl.className = 'input__label input__label--yoshiko';
-
-
-  // tempoInputFieldLbl.style.color = "#a3d39c";
-  tempoInputFieldLbl.innerHTML = "Tempo";
-  ctrlPanelDiv.appendChild(tempoInputFieldLbl);
-  // </editor-fold>    END CONTROL PANEL - TEMPO ///////////////////
-
-  // <editor-fold>     <<<< CONTROL PANEL - PLAYER # >>>> ------- //
-  var playerNumInputField = document.createElement("input");
-  playerNumInputField.type = 'text';
-  playerNumInputField.className = 'input__field--yoshiko';
-  playerNumInputField.id = 'playerNum';
-  playerNumInputField.value = 0;
-  var inputW = (btnW - 15).toString() + "px";
-  playerNumInputField.style.width = inputW;
-  var inputH = (btnH - 42).toString() + "px";
-  playerNumInputField.style.height = inputH;
-  playerNumInputField.style.top = "27px";
-  var tSpace = (btnSpace * 6) - 3;
-  tSpace = tSpace.toString() + "px";
-  playerNumInputField.style.left = tSpace;
-  playerNumInputField.addEventListener("click", function() {
-    playerNumInputField.focus();
-    playerNumInputField.select();
-  });
-  playerNumInputField.addEventListener("keyup", function(e) {
-    if (e.keyCode === 13) {
-      if (activateButtons) {
-        dials.forEach(function(it, ix) {
-          if (ix != parseInt(playerNumInputField.value)) {
-            it.panel.smallify();
-          } else {
-            it.panel.unsmallify();
-          }
-        })
-      }
-    }
-  });
-  ctrlPanelDiv.appendChild(playerNumInputField);
-  // TEMPO INPUT FIELD Label
-  var playerNumInputFieldLbl = document.createElement("label");
-  playerNumInputFieldLbl.for = 'playerNum';
-  playerNumInputFieldLbl.style.left = tSpace;
-  playerNumInputFieldLbl.style.top = "24px";
-  playerNumInputFieldLbl.className = 'input__label input__label--yoshiko';
-
-
-  // playerNumInputFieldLbl.style.color = "#a3d39c";
-  playerNumInputFieldLbl.innerHTML = "Player #";
-  ctrlPanelDiv.appendChild(playerNumInputFieldLbl);
-  // </editor-fold>    END CONTROL PANEL - PLAYER # ////////////////
 
   // <editor-fold>     <<<< CONTROL PANEL - jsPanel >>>> -------- //
   // jsPanel
