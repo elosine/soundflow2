@@ -14,6 +14,7 @@ var TRACK_DIAMETER = 6;
 var TRACK_Y_OFFSET = 3;
 var SCENE_W = 200;
 var SCENE_H = 300;
+var CRV_H = 170;
 var RUNWAYLENGTH = 380;
 var RUNWAYHALF = RUNWAYLENGTH / 2;
 var RUNWAYSTART = RUNWAYLENGTH / 2;
@@ -37,6 +38,7 @@ var SVG_XLINK = 'http://www.w3.org/1999/xlink';
 var controlPanel;
 var ctrlPanelH = 95;
 var ctrlPanelW = 310;
+var cbs = []; //checkboxes
 // BUTTONS ------------------------ >
 var activateButtons = true; //use this if you need to do some time consuming processing before anything else
 var activateStartBtn = false;
@@ -63,10 +65,16 @@ var clr_neonRed = new THREE.Color("rgb(255, 37, 2)");
 var clr_safetyOrange = new THREE.Color("rgb(255, 103, 0)");
 var clr_green = new THREE.Color("rgb(0, 255, 0)");
 // EVENTS --------------------------------- >
-var curveAlgoArray1 = [14, 4, 0.1, 10]; //[cresDur, igap, deltaAsPercent, numOfCycles]
-var runwayCurveFollowNO;
-var eventDataForAll; //global event data stored here; events are sent through the network to all players
-var myEventsMatrix;
+// numOfParts, cresDurRangeArr, igapRangeArr = 4, deltaAsPercentRangeArr, numOfCyclesRangeArr
+var numOfParts = 12;
+var cresDurRangeArr = [11, 15.33];
+var igapRangeArr = [4, 4];
+var deltaAsPercentRangeArr = [0.07, 0.13];
+var numOfCyclesRangeArr = [9, 13];
+var scoreDataForAll; //global event data stored here; events are sent through the network to all players
+var eventsForAll; //generated events stored here
+var notationObjects = [];
+var partsToRun = [];
 // RUN BEFORE INIT ------------------------ >
 ////-- TIMESYNC ENGINE --////
 var tsServer;
@@ -86,19 +94,21 @@ var ts = timesync.create({
 // <editor-fold> <<<< START UP SEQUENCE >>>> ------------------------------- //
 //START UP SEQUENCE DOCUMENTATION
 //// --> init() is run from html
-//// --------> It makes the controlPanel and generates static elements
-//// --> The ctrlPanel:MakePiece/LoadPiece button:
-//// --------> Generates events
+//// --------> It makes the controlPanel
+//// --> The ctrlPanel:Generate Piece/Load Piece button:
+//// --------> Generates Score Data for all parts using generateScoreData
 //// --------> Sends eventData to all clients
-//// --> The ctrlPanel:Start button runs the startPiece():
+//// --------> SocketIO receiver createEventsBroadcast
+////// -----------> Stores data in scoreDataForAll
+////// -----------> Generates events with mkAllEvents and stores in eventsForAll
+////// -----------> Generate static elements for parts that are checked
+//// --> The ctrlPanel:Start button runs startPiece():
 //// --------> Starts clockSync engine
 //// --------> Starts Animation Engine
 // INIT --------------------------------------------------- //
 function init() { //run from html onload='init();'
-  // 01: MAKE CONTROL PANEL ---------------- >
+  // MAKE CONTROL PANEL ---------------- >
   controlPanel = mkCtrlPanel("ctrlPanel", ctrlPanelW, ctrlPanelH, "Control Panel");
-  // 02: GENERATE STATIC ELEMENTS ---------------- >
-  runwayCurveFollowNO = mkNotationObject_runwayCurveFollow(0, SCENE_W, SCENE_H, RUNWAYLENGTH);
 }
 // FUNCTION: startPiece ----------------------------------- //
 function startPiece() {
@@ -117,16 +127,47 @@ function startClockSync() {
 // <editor-fold> <<<< NOTATION OBJECT - RUNWAY_CURVEFOLLOW >>>> ------------ //
 
 // <editor-fold>    <<<< NOTATION OBJECT - INIT >>>> ---------------- //
-function mkNotationObject_runwayCurveFollow(ix, w, h, len) {
+function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, ofTotal]*/ ) {
+  //Placement in window
+  var roffsetX, roffsetY, rautopos;
+  var coffsetX, coffsetY, cautopos;
+  var partOrderNum = placementOrder[0];
+  var totalParts = placementOrder[1];
+  var txoffset
+  var yoffset = 0;
+  if (placementOrder[1] == 1) { //only one part
+    roffsetX = '0px';
+    roffsetY = '0px';
+    rautopos = 'none';
+    coffsetX = '0px';
+    coffsetY = h.toString();
+    cautopos = 'down';
+  } else {
+    if (totalParts < 7) { //6 parts or less
+      txoffset = partOrderNum - (totalParts / 2) + 0.5;
+    } else { //rows of 6
+      if (partOrderNum < 6) { //top row
+        yoffset = 0;
+        txoffset = partOrderNum - (6 / 2) + 0.5;
+      } else { //bottom row
+        txoffset = partOrderNum - 6 - ((totalParts - 6) / 2) + 0.5;
+        yoffset = SCENE_H + CRV_H;
+      }
+    }
+    roffsetX = (txoffset * w).toString() + 'px';
+    roffsetY = yoffset.toString() + 'px';
+    rautopos = 'none';
+    coffsetX = (txoffset * w).toString() + 'px';
+    coffsetY = (h + yoffset).toString() + 'px';
+    cautopos = 'none';
+  }
   var notationObj = {};
   // Curve Follower
-  var CRV_H = 170;
   var CRV_W = w - 4;
   var crvCoords = plot(function(x) {
-    return Math.pow(x, 3);
+    return Math.pow(x, 2.4);
   }, [0, 1, 0, 1], CRV_W, CRV_H);
   var crvFollowData = [];
-
   // Generate ID
   var id = 'runwayCurveFollow' + ix;
   notationObj['id'] = id;
@@ -142,11 +183,11 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len) {
   // Make jsPanels ----------------- >
   //// Runway ////
   var runwayPanelID = id + 'runwayPanel';
-  var runwayPanel = mkPanel(runwayPanelID, runwayCanvas, w, h, "Player " + ix.toString() + "Runway", ['center-top', '0px', '0px', 'none']);
+  var runwayPanel = mkPanel(runwayPanelID, runwayCanvas, w, h, "Player " + ix.toString() + " - Runway", ['center-top', roffsetX, roffsetY, rautopos]);
   notationObj['runwayPanel'] = runwayPanel;
   //// Curve Follower ////
   var crvFollowPanelID = id + 'crvFollowPanel';
-  var crvFollowPanel = mkPanel(crvFollowPanelID, crvFollowCanvas, CRV_W, CRV_H, "Player " + ix.toString(), ['center-top', '0px', h.toString(), 'down']);
+  var crvFollowPanel = mkPanel(crvFollowPanelID, crvFollowCanvas, CRV_W, CRV_H, "Player " + ix.toString() + " - Curve", ['center-top', coffsetX, coffsetY, cautopos]);
   notationObj['crvFollowPanel'] = crvFollowPanel;
   // </editor-fold>       END NOTATION OBJECT - INIT /////////
 
@@ -347,6 +388,24 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len) {
 
 // <editor-fold> <<<< EVENTS >>>> ---------------------------- //
 
+// <editor-fold>      <<<< EVENTS - GENERATE SCORE DATA //
+//Events have equal length
+//Gaps between events increase a percentage each event for a certain number
+//of events then revert to the initial gap growing again
+function generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, deltaAsPercentRangeArr, numOfCyclesRangeArr) {
+  var scoreDataArray = [];
+  for (var i = 0; i < numOfParts; i++) {
+    var cresDur = rrand(cresDurRangeArr[0], cresDurRangeArr[1]);
+    var igap = rrand(igapRangeArr[0], igapRangeArr[1]);
+    var deltaAsPercent = rrand(deltaAsPercentRangeArr[0], deltaAsPercentRangeArr[1]);
+    var numOfCycles = rrandInt(numOfCyclesRangeArr[0], numOfCyclesRangeArr[1]);
+    var temp_data = generateEventData(cresDur, igap, deltaAsPercent, numOfCycles);
+    scoreDataArray.push(temp_data);
+  }
+  return scoreDataArray;
+}
+// </editor-fold>     END EVENTS - GENERATE SCORE DATA //
+
 // <editor-fold>      <<<< EVENTS - GENERATE EVENT DATA //
 //Events have equal length
 //Gaps between events increase a percentage each event for a certain number
@@ -373,6 +432,17 @@ function generateEventData(cresDur, igap, deltaAsPercent, numOfCycles) {
   return eventDataArray;
 }
 // </editor-fold>     END EVENTS - GENERATE EVENT DATA //
+
+// <editor-fold>      <<<< EVENTS - MAKE ALL EVENTS //
+function mkAllEvents(scoreData) {
+  var allEventsMatrix = [];
+  for (var i = 0; i < scoreData.length; i++) {
+    var tempEvents = mkEvents(scoreData[i]);
+    allEventsMatrix.push(tempEvents);
+  }
+  return allEventsMatrix;
+}
+// </editor-fold>     END EVENTS - MAKE ALL EVENTS //
 
 // <editor-fold>      <<<< EVENTS - MAKE EVENTS //
 function mkEvents(eventsData) {
@@ -407,56 +477,6 @@ function mkEvents(eventsData) {
 }
 // </editor-fold>     END EVENTS - MAKE EVENTS //
 
-// // <editor-fold>      <<<< EVENTS - ANIMATE EVENTS //
-// function animateRunwayEvents(eventMatrix) {
-//   for (var i = 0; i < eventMatrix.length; i++) {
-//     var t_mesh = eventMatrix[i][1];
-//     var t_renderGate = eventMatrix[i][0];
-//     var t_eventLen = eventMatrix[i][7];
-//     // - (t_eventLen/2) is because y=0 is the center of the object
-//     var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
-//     var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
-//     var t_goFrame = Math.round(eventMatrix[i][2]);
-//     var t_endFrame = Math.round(eventMatrix[i][6]);
-//     //add the tf to the scene if it is on the runway
-//     if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
-//       if (t_renderGate) {
-//         eventMatrix[i][0] = false;
-//         runwayNO.conveyor.add(t_mesh);
-//         runwayNO.scene.add(runwayNO.conveyor);
-//       }
-//     }
-//     //advance tf if it is not past gofret
-//     if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
-//       t_mesh.position.y -= RUNWAY_PXPERFRAME;
-//     }
-//     //When tf reaches goline, blink and remove
-//     if (framect >= t_goFrame && framect <= t_endFrame) {
-//       crvFollowData[0] = true;
-//       crvFollowData[1] = scale(framect, t_goFrame, t_endFrame, 0.0, 1.0);
-//     }
-//     //end of event remove
-//     if (framect == t_endFrame) {
-//       crvFollowData[0] = false;
-//       var obj2Rmv = runwayNO.scene.getObjectByName(t_mesh.name);
-//       runwayNO.conveyor.remove(obj2Rmv);
-//     }
-//     //crv follow
-//     if (crvFollowData[0]) {
-//       var tcoordsix = Math.floor(scale(crvFollowData[1], 0.0, 1.0, 0, crvCoords.length));
-//       //circ
-//       curveNO.crvCirc.setAttributeNS(null, "cx", crvCoords[tcoordsix].x.toString());
-//       curveNO.crvCirc.setAttributeNS(null, "cy", crvCoords[tcoordsix].y.toString());
-//
-//       //rect
-//       var temph = CRV_H - crvCoords[tcoordsix].y;
-//       curveNO.crvFollowRect.setAttributeNS(null, "y", crvCoords[tcoordsix].y.toString());
-//       curveNO.crvFollowRect.setAttributeNS(null, "height", temph.toString());
-//     }
-//   }
-// }
-// // </editor-fold>     END EVENTS - ANIMATE EVENTS //
-
 // </editor-fold> END EVENTS ////////////////////////////////////
 
 
@@ -489,9 +509,10 @@ function mkCtrlPanel(panelid, w, h, title) {
   generateNotationButton.style.left = "0px";
   generateNotationButton.addEventListener("click", function() {
     if (activateButtons) {
-      eventDataForAll = generateEventData(14, 4, 0.1, 10);
+      //[ Array of gotime and dur for each part:[gotime,dur] ]
+      var scoreData = generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, deltaAsPercentRangeArr, numOfCyclesRangeArr);
       socket.emit('createEvents', {
-        eventDataArr: eventDataForAll
+        eventDataArr: scoreData
       });
     }
   });
@@ -689,12 +710,13 @@ function mkCtrlPanel(panelid, w, h, title) {
   // </editor-fold>    END CONTROL PANEL - SAVE ////////////////////
 
   // <editor-fold>     <<<< CONTROL PANEL - CHECKBOXES >>>> - //
-  var cbs = [];
   for (var i = 0; i < 12; i++) {
     var cbar = [];
     var cb = document.createElement("input");
     cb.id = 'cb' + i.toString();
     cb.type = 'checkbox';
+    cb.value = '0';
+    cb.checked = '';
     cb.style.width = '15px';
     cb.style.height = '15px';
     cb.style.position = 'absolute';
@@ -706,6 +728,13 @@ function mkCtrlPanel(panelid, w, h, title) {
       tl2 = tl2 + (i - 10) * 4;
     }
     cb.style.left = tl.toString() + 'px';
+    // cb.addEventListener('change', function() {
+    //   if (this.checked) {
+    //     console.log("Checkbox is checked..");
+    //   } else {
+    //     console.log("Checkbox is not checked..");
+    //   }
+    // });
     ctrlPanelDiv.appendChild(cb);
     cbar.push(cb);
     var cblbl = document.createElement("label");
@@ -718,7 +747,7 @@ function mkCtrlPanel(panelid, w, h, title) {
     cblbl.style.top = '77px';
     cblbl.style.left = tl2.toString() + 'px';
     ctrlPanelDiv.appendChild(cblbl);
-    cbar.push(cb);
+    cbar.push(cblbl);
     cbs.push(cbar);
   }
 
@@ -846,9 +875,20 @@ socket.on('startpiecebroadcast', function(data) {
 
 // <editor-fold>       <<<< SOCKET IO - CREATE EVENTS >>>> ------ //
 socket.on('createEventsBroadcast', function(data) {
-  var eventDataArr = data.eventDataArr;
-  // Generate events for this player from event data here and store in eventsArray
-  myEventsMatrix = mkEvents(eventDataArr);
+  scoreDataForAll = data.eventDataArr;
+  // Generate events for this player from event data here and store in eventsForAll
+  eventsForAll = mkAllEvents(scoreDataForAll);
+  // 02: GENERATE STATIC ELEMENTS ------------------- >
+  //Based on which player checkboxes are chosen
+  cbs.forEach((it, ix) => {
+    if (it[0].checked) {
+      partsToRun.push(ix);
+    }
+  });
+  partsToRun.forEach((it, ix) => {
+    var newNO = mkNotationObject_runwayCurveFollow(it, SCENE_W, SCENE_H, RUNWAYLENGTH, [ix, partsToRun.length]);
+    notationObjects.push(newNO);
+  });
   if (startPieceGate) {
     activateStartBtn = true;
     activateSaveBtn = true;
