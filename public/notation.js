@@ -18,7 +18,6 @@ var CRV_H = 170;
 var RUNWAYLENGTH = 380;
 var RUNWAYHALF = RUNWAYLENGTH / 2;
 var RUNWAYSTART = RUNWAYLENGTH / 2;
-var RUNWAYLENGTH_FRAMES = RUNWAYLENGTH / RUNWAY_PXPERFRAME;
 var t_numFrets = 11;
 // TIMING ------------------------- >
 var FRAMERATE = 60.0;
@@ -30,7 +29,8 @@ var RUNWAY_PXPERFRAME = RUNWAY_PXPERSEC / FRAMERATE;
 var RUNWAY_GOFRETPOS_Y = -RUNWAYLENGTH / 2;
 var RUNWAY_GOFRETHEIGHT = 4;
 var PIECE_MAX_DURATION = 3600;
-var timeAdjustment = 0;
+var RUNWAYLENGTH_FRAMES = RUNWAYLENGTH / RUNWAY_PXPERFRAME;
+var timeAdjustment = 10;
 // SVG ---------------------------- >
 var SVG_NS = "http://www.w3.org/2000/svg";
 var SVG_XLINK = 'http://www.w3.org/1999/xlink';
@@ -67,9 +67,10 @@ var clr_green = new THREE.Color("rgb(0, 255, 0)");
 // EVENTS --------------------------------- >
 // numOfParts, cresDurRangeArr, igapRangeArr = 4, deltaAsPercentRangeArr, numOfCyclesRangeArr
 var numOfParts = 12;
-var cresDurRangeArr = [11, 15.33];
+var cresDurRangeArr = [14, 14];
 var igapRangeArr = [4, 4];
-var deltaAsPercentRangeArr = [0.07, 0.13];
+var durDeltaAsPercentRangeArr = [-0.07, 0.07];
+var gapDeltaAsPercentRangeArr = [0.07, 0.13];
 var numOfCyclesRangeArr = [9, 13];
 var scoreDataForAll; //global event data stored here; events are sent through the network to all players
 var eventsForAll; //generated events stored here
@@ -128,6 +129,8 @@ function startClockSync() {
 
 // <editor-fold>    <<<< NOTATION OBJECT - INIT >>>> ---------------- //
 function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, ofTotal]*/ ) {
+  var notationObj = {};
+  notationObj['ix'] = ix;
   //Placement in window
   var roffsetX, roffsetY, rautopos;
   var coffsetX, coffsetY, cautopos;
@@ -151,17 +154,16 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
         txoffset = partOrderNum - (6 / 2) + 0.5;
       } else { //bottom row
         txoffset = partOrderNum - 6 - ((totalParts - 6) / 2) + 0.5;
-        yoffset = SCENE_H + CRV_H;
+        yoffset = SCENE_H + CRV_H + 20;
       }
     }
-    roffsetX = (txoffset * w).toString() + 'px';
+    roffsetX = (txoffset * (w + 7)).toString() + 'px';
     roffsetY = yoffset.toString() + 'px';
     rautopos = 'none';
-    coffsetX = (txoffset * w).toString() + 'px';
+    coffsetX = (txoffset * (w + 7)).toString() + 'px';
     coffsetY = (h + yoffset).toString() + 'px';
     cautopos = 'none';
   }
-  var notationObj = {};
   // Curve Follower
   var CRV_W = w - 4;
   var crvCoords = plot(function(x) {
@@ -312,7 +314,7 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
   notationObj['crvCirc'] = tSvgCirc;
   //Make Follower Data for maping in animation [gate, currentCoord]
   var tcrvFset = [];
-  tcrvFset.push(true);
+  tcrvFset.push(false);
   tcrvFset.push(0.0);
   crvFollowData.push(tcrvFset);
   // </editor-fold>     END NOTATION OBJECT - STATIC ELEMENTS //
@@ -328,16 +330,33 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
 
   // <editor-fold>  <<<< NOTATION OBJECT - ANIMATE >>>> ------------- //
   notationObj['animate'] = function(eventMatrix) {
+    //This loop runs through all events
+    //All events need to be advanced position.y
     for (var i = 0; i < eventMatrix.length; i++) {
       var t_mesh = eventMatrix[i][1];
-      var t_renderGate = eventMatrix[i][0];
       var t_eventLen = eventMatrix[i][7];
-      // - (t_eventLen/2) is because y=0 is the center of the object
-      var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
+      var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
+      //advance event if it is not past gofret
+      if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
+        t_mesh.position.y -= RUNWAY_PXPERFRAME;
+      }
+    }
+    //This loop runs through only events on scene
+    for (var i = 0; i < eventMatrix.length; i++) {
+      var t_mesh = eventMatrix[i][1];
+      var t_eventLen = eventMatrix[i][7];
       var t_mesh_tail = t_mesh.position.y + (t_eventLen / 2);
       var t_goFrame = Math.round(eventMatrix[i][2]);
+      var onSceneFrame = t_goFrame - RUNWAYLENGTH_FRAMES;
+      // So you don't run through the entire events array, only the ones on scene
+      if (framect <= onSceneFrame) {
+        break;
+      }
+      var t_renderGate = eventMatrix[i][0];
+      // - (t_eventLen/2) is because y=0 is the center of the object
+      var t_mesh_head = t_mesh.position.y - (t_eventLen / 2);
       var t_endFrame = Math.round(eventMatrix[i][6]);
-      //add the tf to the scene if it is on the runway
+      //add the event to the scene if it is on the runway
       if (t_mesh_head < RUNWAYHALF && t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
         if (t_renderGate) {
           eventMatrix[i][0] = false;
@@ -345,30 +364,11 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
           scene.add(conveyor);
         }
       }
-      //advance tf if it is not past gofret
-      if (t_mesh_tail > RUNWAY_GOFRETPOS_Y) {
-        t_mesh.position.y -= RUNWAY_PXPERFRAME;
-      }
-      //When tf reaches goline, blink and remove
-      if (framect >= t_goFrame && framect <= t_endFrame) {
-        crvFollowData[0] = true;
-        crvFollowData[1] = scale(framect, t_goFrame, t_endFrame, 0.0, 1.0);
-      }
-      //end of event remove
-      if (framect == t_endFrame) {
-        //Reset Curve Follower
-        crvFollowData[0] = false;
-        tSvgCirc.setAttributeNS(null, "cx", crvCoords[0].x.toString());
-        tSvgCirc.setAttributeNS(null, "cy", crvCoords[0].y.toString());
-        tcrvFollowRect.setAttributeNS(null, "y", CRV_W.toString());
-        tcrvFollowRect.setAttributeNS(null, "height", 0);
-        //Remove runway event
-        var obj2Rmv = scene.getObjectByName(t_mesh.name);
-        conveyor.remove(obj2Rmv);
-      }
-      //crv follow
-      if (crvFollowData[0]) {
-        var tcoordsix = Math.floor(scale(crvFollowData[1], 0.0, 1.0, 0, crvCoords.length));
+      //Event Reaches Goline
+      if (framect > t_goFrame && framect <= t_endFrame) {
+        var crvFollowDataNorm = scale(framect, t_goFrame, t_endFrame, 0.0, 1.0);
+        var tcoordsix = Math.floor(scale(crvFollowDataNorm, 0.0, 1.0, 0, crvCoords.length));
+        tcoordsix = constrain(tcoordsix, 0, (crvCoords.length - 1));
         //circ
         tSvgCirc.setAttributeNS(null, "cx", crvCoords[tcoordsix].x.toString());
         tSvgCirc.setAttributeNS(null, "cy", crvCoords[tcoordsix].y.toString());
@@ -376,6 +376,19 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
         var temph = CRV_H - crvCoords[tcoordsix].y;
         tcrvFollowRect.setAttributeNS(null, "y", crvCoords[tcoordsix].y.toString());
         tcrvFollowRect.setAttributeNS(null, "height", temph.toString());
+      }
+      //end of event remove
+      if (framect == t_endFrame) {
+        //Reset Curve Follower
+        tSvgCirc.setAttributeNS(null, "cx", crvCoords[0].x.toString());
+        tSvgCirc.setAttributeNS(null, "cy", crvCoords[0].y.toString());
+        tcrvFollowRect.setAttributeNS(null, "y", CRV_W.toString());
+        tcrvFollowRect.setAttributeNS(null, "height", 0);
+        //Remove runway event
+        var obj2Rmv = scene.getObjectByName(t_mesh.name);
+        conveyor.remove(obj2Rmv);
+        //Remove Event from Array
+        eventMatrix.splice(0, 1);
       }
     }
   }
@@ -392,14 +405,15 @@ function mkNotationObject_runwayCurveFollow(ix, w, h, len, placementOrder /*[#, 
 //Events have equal length
 //Gaps between events increase a percentage each event for a certain number
 //of events then revert to the initial gap growing again
-function generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, deltaAsPercentRangeArr, numOfCyclesRangeArr) {
+function generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, durDeltaAsPercentRangeArr, gapDeltaAsPercentRangeArr, numOfCyclesRangeArr) {
   var scoreDataArray = [];
   for (var i = 0; i < numOfParts; i++) {
     var cresDur = rrand(cresDurRangeArr[0], cresDurRangeArr[1]);
     var igap = rrand(igapRangeArr[0], igapRangeArr[1]);
-    var deltaAsPercent = rrand(deltaAsPercentRangeArr[0], deltaAsPercentRangeArr[1]);
+    var durDeltaAsPercent = rrand(durDeltaAsPercentRangeArr[0], durDeltaAsPercentRangeArr[1]);
+    var gapDeltaAsPercent = rrand(gapDeltaAsPercentRangeArr[0], gapDeltaAsPercentRangeArr[1]);
     var numOfCycles = rrandInt(numOfCyclesRangeArr[0], numOfCyclesRangeArr[1]);
-    var temp_data = generateEventData(cresDur, igap, deltaAsPercent, numOfCycles);
+    var temp_data = generateEventData(cresDur, igap, durDeltaAsPercent, gapDeltaAsPercent, numOfCycles);
     scoreDataArray.push(temp_data);
   }
   return scoreDataArray;
@@ -407,11 +421,12 @@ function generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, deltaAsPer
 // </editor-fold>     END EVENTS - GENERATE SCORE DATA //
 
 // <editor-fold>      <<<< EVENTS - GENERATE EVENT DATA //
-//Events have equal length
-//Gaps between events increase a percentage each event for a certain number
+//Events start all equal length
+//Events & Gaps between events increase a percentage each event for a certain number
 //of events then revert to the initial gap growing again
-function generateEventData(cresDur, igap, deltaAsPercent, numOfCycles) {
+function generateEventData(cresDur, igap, durDeltaAsPercent, gapDeltaAsPercent, numOfCycles) {
   var eventDataArray = [];
+  var newDur = cresDur;
   var newGap = igap;
   var maxNumEvents = PIECE_MAX_DURATION / cresDur;
   var currCycle = 0;
@@ -419,14 +434,18 @@ function generateEventData(cresDur, igap, deltaAsPercent, numOfCycles) {
   eventDataArray.push([goTime, cresDur]);
   for (var i = 0; i < maxNumEvents; i++) {
     var tempArr = [];
-    goTime = goTime + cresDur + newGap;
+    goTime = goTime + newDur + newGap;
     tempArr.push(goTime);
-    tempArr.push(cresDur);
+    tempArr.push(newDur);
     eventDataArray.push(tempArr);
+    currCycle++;
     if ((currCycle % numOfCycles) == 0) {
+      newDur = cresDur;
       newGap = igap;
+    } else {
+      newDur = newDur * (1 + durDeltaAsPercent);
+      newGap = newGap * (1 + gapDeltaAsPercent);
     }
-    newGap = newGap * (1 + deltaAsPercent);
   }
   //longest/shortest Dur = igap * Math.pow( (1+changeDeltaAsPercent), numOfCycles )
   return eventDataArray;
@@ -510,7 +529,7 @@ function mkCtrlPanel(panelid, w, h, title) {
   generateNotationButton.addEventListener("click", function() {
     if (activateButtons) {
       //[ Array of gotime and dur for each part:[gotime,dur] ]
-      var scoreData = generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, deltaAsPercentRangeArr, numOfCyclesRangeArr);
+      var scoreData = generateScoreData(numOfParts, cresDurRangeArr, igapRangeArr, durDeltaAsPercentRangeArr, gapDeltaAsPercentRangeArr, numOfCyclesRangeArr);
       socket.emit('createEvents', {
         eventDataArr: scoreData
       });
@@ -540,31 +559,24 @@ function mkCtrlPanel(panelid, w, h, title) {
         reader.readAsText(e.srcElement.files[0]);
         var me = this;
         reader.onload = function() {
-
           var dataAsText = reader.result;
           var eventsArray = [];
-          var playersArr = dataAsText.split("newPlayerDataSet");
+          var playersArr = dataAsText.split("!");
           playersArr.forEach(function(it, ix) {
             var t1 = it.split(";");
             var thisPlayersEvents = [];
             for (var i = 0; i < t1.length; i++) {
-              if (t1[i] == -1) {
-                thisPlayersEvents.push(-1);
-              } else {
-                t2 = [];
-                var temparr = t1[i].split(',');
-                t2.push(temparr[0]);
-                t2.push(parseInt(temparr[1]));
-                t2.push(parseInt(temparr[2]));
-                thisPlayersEvents.push(t2);
-              }
+              t2 = [];
+              var temparr = t1[i].split(',');
+              t2.push(parseFloat(temparr[0]));
+              t2.push(parseFloat(temparr[1]));
+              thisPlayersEvents.push(t2);
             }
             eventsArray.push(thisPlayersEvents);
           })
           socket.emit('loadPiece', {
             eventsArray: eventsArray
           });
-
         }
       }
       input.click();
@@ -665,35 +677,24 @@ function mkCtrlPanel(panelid, w, h, title) {
     if (activateButtons) {
       if (activateSaveBtn) {
         var eventDataStr = "";
-        dials.forEach(function(it, ix) {
-          var eventData = it.notesArr;
+        scoreDataForAll.forEach(function(it, ix) {
+          var eventData = it;
           for (var i = 0; i < eventData.length; i++) {
             if (i != (eventData.length - 1)) { //if not last (last item will not have semicolon)
-              if (eventData[i] == -1) { // -1 means no notation for this tick
-                eventDataStr = eventDataStr + "-1;";
-              } else { // if it has notation
-                for (var j = 0; j < eventData[i].length; j++) {
-                  if (j == (eventData[i].length - 1)) {
-                    eventDataStr = eventDataStr + eventData[i][j].toString() + ";"; //semicolon for last one
-                  } else {
-                    eventDataStr = eventDataStr + eventData[i][j].toString() + ","; // , for all others
-                  }
+              for (var j = 0; j < eventData[i].length; j++) {
+                if (j == (eventData[i].length - 1)) {
+                  eventDataStr = eventDataStr + eventData[i][j].toString() + ";"; //semicolon for last one
+                } else {
+                  eventDataStr = eventDataStr + eventData[i][j].toString() + ","; // , for all others
                 }
               }
             } else { //last one don't include semicolon
-              if (eventData[i] == -1) {
-                eventDataStr = eventDataStr + "-1";
-              } else {
-                for (var j = 0; j < eventData[i].length; j++) {
-                  if (j == (eventData[i].length - 1)) {
-                    eventDataStr = eventDataStr + eventData[i][j].toString();
-                  } else {
-                    eventDataStr = eventDataStr + eventData[i][j].toString() + ",";
-                  }
+              for (var j = 0; j < eventData[i].length; j++) {
+                if (j == (eventData[i].length - 1)) {
+                  eventDataStr = eventDataStr + eventData[i][j].toString() + "!";
+                } else {
+                  eventDataStr = eventDataStr + eventData[i][j].toString() + ",";
                 }
-              }
-              if (ix != (dials.length - 1)) {
-                eventDataStr = eventDataStr + "newPlayerDataSet"; //Mark start of new notation set for next player
               }
             }
           }
@@ -701,7 +702,7 @@ function mkCtrlPanel(panelid, w, h, title) {
         });
         var t_now = new Date(ts.now());
         var month = t_now.getMonth() + 1;
-        var eventsFileName = "pulseCycle003_" + t_now.getFullYear() + "_" + month + "_" + t_now.getUTCDate() + "_" + t_now.getHours() + "-" + t_now.getMinutes();
+        var eventsFileName = "soundflow2_" + t_now.getFullYear() + "_" + month + "_" + t_now.getUTCDate() + "_" + t_now.getHours() + "-" + t_now.getMinutes();
         downloadStrToHD(eventDataStr, eventsFileName, 'text/plain');
       }
     }
@@ -728,13 +729,6 @@ function mkCtrlPanel(panelid, w, h, title) {
       tl2 = tl2 + (i - 10) * 4;
     }
     cb.style.left = tl.toString() + 'px';
-    // cb.addEventListener('change', function() {
-    //   if (this.checked) {
-    //     console.log("Checkbox is checked..");
-    //   } else {
-    //     console.log("Checkbox is not checked..");
-    //   }
-    // });
     ctrlPanelDiv.appendChild(cb);
     cbar.push(cb);
     var cblbl = document.createElement("label");
@@ -756,7 +750,7 @@ function mkCtrlPanel(panelid, w, h, title) {
   // <editor-fold>     <<<< CONTROL PANEL - jsPanel >>>> -------- //
   // jsPanel
   jsPanel.create({
-    position: 'center-bottom',
+    position: 'left-bottom',
     id: panelid,
     contentSize: w.toString() + " " + h.toString(),
     header: 'auto-show-hide',
@@ -878,7 +872,7 @@ socket.on('createEventsBroadcast', function(data) {
   scoreDataForAll = data.eventDataArr;
   // Generate events for this player from event data here and store in eventsForAll
   eventsForAll = mkAllEvents(scoreDataForAll);
-  // 02: GENERATE STATIC ELEMENTS ------------------- >
+  // GENERATE STATIC ELEMENTS ------------------- >
   //Based on which player checkboxes are chosen
   cbs.forEach((it, ix) => {
     if (it[0].checked) {
@@ -923,8 +917,19 @@ socket.on('pauseBroadcast', function(data) {
 // <editor-fold>       <<<< SOCKET IO - LOAD PIECE >>>> --------- //
 socket.on('loadPieceBroadcast', function(data) {
   var eventsArray = data.eventsArray;
-  eventsArray.forEach((it, ix) => {
-    dials[ix].generateNotation(it);
+  scoreDataForAll = data.eventsArray;
+  // Generate events for this player from event data here and store in eventsForAll
+  eventsForAll = mkAllEvents(scoreDataForAll);
+  // GENERATE STATIC ELEMENTS ------------------- >
+  //Based on which player checkboxes are chosen
+  cbs.forEach((it, ix) => {
+    if (it[0].checked) {
+      partsToRun.push(ix);
+    }
+  });
+  partsToRun.forEach((it, ix) => {
+    var newNO = mkNotationObject_runwayCurveFollow(it, SCENE_W, SCENE_H, RUNWAYLENGTH, [ix, partsToRun.length]);
+    notationObjects.push(newNO);
   });
   if (startPieceGate) {
     activateStartBtn = true;
@@ -957,14 +962,18 @@ socket.on('newTempoBroadcast', function(data) {
 // <editor-fold>        <<<< UPDATE >>>> ----------------------- //
 function update(aMSPERFRAME, currTimeMS) {
   framect++;
-  runwayCurveFollowNO.animate(myEventsMatrix);
+  notationObjects.forEach(function(it, ix) {
+    it.animate(eventsForAll[it.ix]);
+  });
 }
 // </editor-fold>       END UPDATE ////////////////////////////////
 
 // <editor-fold>        <<<< DRAW >>>> ------------------------- //
 function draw() {
   // RENDER ///////////////////////////////////////////////////////////////
-  runwayCurveFollowNO.renderer.render(runwayCurveFollowNO.scene, runwayCurveFollowNO.camera);
+  notationObjects.forEach(function(it, ix) {
+    it.renderer.render(it.scene, it.camera);
+  });
 }
 // </editor-fold>       END DRAW //////////////////////////////////
 
