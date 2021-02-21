@@ -432,13 +432,12 @@ function generateEventData(cresDur, igap, durDeltaAsPercent, gapDeltaAsPercent, 
   var currCycle = 0;
   var goTime = 0;
   eventDataArray.push([goTime, cresDur]);
-  for (var i = 0; i < maxNumEvents; i++) {
+  for (var i = 1; i < maxNumEvents; i++) {
     var tempArr = [];
-    goTime = goTime + newDur + newGap;
-    tempArr.push(goTime);
-    tempArr.push(newDur);
-    eventDataArray.push(tempArr);
     currCycle++;
+    var previousGoTime = eventDataArray[i - 1][0];
+    var previousDur = eventDataArray[i - 1][1];
+    var newGoTime = previousGoTime + previousDur + newGap;
     if ((currCycle % numOfCycles) == 0) {
       newDur = cresDur;
       newGap = igap;
@@ -446,6 +445,9 @@ function generateEventData(cresDur, igap, durDeltaAsPercent, gapDeltaAsPercent, 
       newDur = newDur * (1 + durDeltaAsPercent);
       newGap = newGap * (1 + gapDeltaAsPercent);
     }
+    tempArr.push(newGoTime);
+    tempArr.push(newDur);
+    eventDataArray.push(tempArr);
   }
   //longest/shortest Dur = igap * Math.pow( (1+changeDeltaAsPercent), numOfCycles )
   return eventDataArray;
